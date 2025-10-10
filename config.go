@@ -1,6 +1,8 @@
 package graphql
 
 import (
+	"net/http"
+
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/reveald/reveald"
 )
@@ -10,6 +12,16 @@ type Config struct {
 	// Queries maps GraphQL query names to their configuration
 	Queries map[string]*QueryConfig
 }
+
+// RootQueryBuilder is a function that builds a root query based on the HTTP request
+// This allows dynamic filtering based on request context (headers, JWT, etc.)
+// Used for typed Elasticsearch queries (EnableElasticQuerying: true)
+type RootQueryBuilder func(r *http.Request) (*types.Query, error)
+
+// RequestInterceptor is a function that modifies a reveald Request based on the HTTP request
+// This allows injecting parameters based on request context (headers, JWT, etc.)
+// Used for feature-based reveald queries
+type RequestInterceptor func(httpReq *http.Request, revealdReq *reveald.Request) error
 
 // QueryConfig defines configuration for a single GraphQL query
 type QueryConfig struct {
@@ -48,6 +60,15 @@ type QueryConfig struct {
 	// RootQuery is a base Elasticsearch query that is always applied (merged with user queries)
 	// Useful for static filtering (e.g., always filter by active=true)
 	RootQuery *types.Query
+
+	// RootQueryBuilder dynamically builds a root query based on the HTTP request
+	// If both RootQuery and RootQueryBuilder are set, both are merged with user queries
+	// Only used for typed ES queries (EnableElasticQuerying: true)
+	RootQueryBuilder RootQueryBuilder
+
+	// RequestInterceptor modifies the reveald Request based on the HTTP request
+	// Used for feature-based queries to inject dynamic parameters
+	RequestInterceptor RequestInterceptor
 }
 
 // FieldFilter defines which fields to include or exclude

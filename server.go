@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,12 @@ import (
 	"github.com/graphql-go/graphql"
 	"github.com/reveald/reveald"
 )
+
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// httpRequestKey is the context key for storing the HTTP request
+const httpRequestKey = contextKey("httpRequest")
 
 // GraphQLAPI is the main GraphQL server
 type GraphQLAPI struct {
@@ -79,12 +86,14 @@ func (api *GraphQLAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute query
+	// Execute query with HTTP request in context
+	ctx := context.WithValue(r.Context(), httpRequestKey, r)
 	result := graphql.Do(graphql.Params{
 		Schema:         api.schema,
 		RequestString:  req.Query,
 		VariableValues: req.Variables,
 		OperationName:  req.OperationName,
+		Context:        ctx,
 	})
 
 	// Write response

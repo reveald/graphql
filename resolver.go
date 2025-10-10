@@ -3,6 +3,7 @@ package graphql
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
@@ -54,6 +55,17 @@ func (rb *ResolverBuilder) BuildResolver(queryName string, config *QueryConfig) 
 			return nil, fmt.Errorf("failed to read arguments: %w", err)
 		}
 
+		// Call RequestInterceptor if defined to inject dynamic parameters
+		if config.RequestInterceptor != nil {
+			httpReq, ok := getHTTPRequest(params)
+			if !ok {
+				return nil, fmt.Errorf("HTTP request not available in context")
+			}
+			if err := config.RequestInterceptor(httpReq, request); err != nil {
+				return nil, fmt.Errorf("request interceptor failed: %w", err)
+			}
+		}
+
 		// Execute the query
 		result, err := endpoint.Execute(context.Background(), request)
 		if err != nil {
@@ -80,8 +92,22 @@ func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, con
 		}
 	}
 
-	// Merge with root query if provided
-	finalQuery := mergeQueries(config.RootQuery, userQuery)
+	// Build dynamic root query if RootQueryBuilder is defined
+	var dynamicRootQuery *types.Query
+	if config.RootQueryBuilder != nil {
+		httpReq, ok := getHTTPRequest(params)
+		if !ok {
+			return nil, fmt.Errorf("HTTP request not available in context")
+		}
+		var err error
+		dynamicRootQuery, err = config.RootQueryBuilder(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build root query: %w", err)
+		}
+	}
+
+	// Merge static root query, dynamic root query, and user query
+	finalQuery := mergeQueries(config.RootQuery, dynamicRootQuery, userQuery)
 
 	// Convert GraphQL aggs argument to ES Aggregations
 	var aggs map[string]types.Aggregations
@@ -158,6 +184,15 @@ func (rb *ResolverBuilder) convertResult(result *reveald.Result, config *QueryCo
 // GetResolverFunc returns a ResolverFunc for this builder
 func (rb *ResolverBuilder) GetResolverFunc() ResolverFunc {
 	return rb.BuildResolver
+}
+
+// getHTTPRequest extracts the HTTP request from GraphQL resolve params context
+func getHTTPRequest(params graphql.ResolveParams) (*http.Request, bool) {
+	if params.Context == nil {
+		return nil, false
+	}
+	httpReq, ok := params.Context.Value(httpRequestKey).(*http.Request)
+	return httpReq, ok
 }
 
 // replaceDotsWithUnderscores converts ES field names to GraphQL field names

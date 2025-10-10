@@ -337,19 +337,31 @@ func convertAggsInput(inputs []*ESAggInput) (map[string]types.Aggregations, erro
 	return aggs, nil
 }
 
-// mergeQueries merges a root query with a user query using bool must
-func mergeQueries(rootQuery, userQuery *types.Query) *types.Query {
-	if rootQuery == nil {
-		return userQuery
-	}
-	if userQuery == nil {
-		return rootQuery
+// mergeQueries merges multiple queries using bool must
+// Nil queries are skipped
+func mergeQueries(queries ...*types.Query) *types.Query {
+	// Filter out nil queries
+	var nonNil []types.Query
+	for _, q := range queries {
+		if q != nil {
+			nonNil = append(nonNil, *q)
+		}
 	}
 
-	// Create a bool query with both as must clauses
+	// Return nil if no queries
+	if len(nonNil) == 0 {
+		return nil
+	}
+
+	// Return the single query if only one
+	if len(nonNil) == 1 {
+		return &nonNil[0]
+	}
+
+	// Create a bool query with all as must clauses
 	return &types.Query{
 		Bool: &types.BoolQuery{
-			Must: []types.Query{*rootQuery, *userQuery},
+			Must: nonNil,
 		},
 	}
 }
