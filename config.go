@@ -11,6 +11,9 @@ import (
 type Config struct {
 	// Queries maps GraphQL query names to their configuration
 	Queries map[string]*QueryConfig
+
+	// PrecompiledQueries maps GraphQL query names to precompiled query configurations
+	PrecompiledQueries map[string]*PrecompiledQueryConfig
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request
@@ -94,7 +97,8 @@ func (qc *QueryConfig) GetIndices() []string {
 // NewConfig creates a new GraphQL API configuration
 func NewConfig() *Config {
 	return &Config{
-		Queries: make(map[string]*QueryConfig),
+		Queries:            make(map[string]*QueryConfig),
+		PrecompiledQueries: make(map[string]*PrecompiledQueryConfig),
 	}
 }
 
@@ -104,4 +108,12 @@ func (c *Config) AddQuery(name string, config *QueryConfig) {
 		c.Queries = make(map[string]*QueryConfig)
 	}
 	c.Queries[name] = config
+}
+
+// AddPrecompiledQuery adds a precompiled query configuration to the config
+func (c *Config) AddPrecompiledQuery(name string, config *PrecompiledQueryConfig) {
+	if c.PrecompiledQueries == nil {
+		c.PrecompiledQueries = make(map[string]*PrecompiledQueryConfig)
+	}
+	c.PrecompiledQueries[name] = config
 }

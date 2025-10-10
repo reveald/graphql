@@ -2,11 +2,13 @@ package graphql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/graphql-go/graphql"
 	"github.com/reveald/reveald"
@@ -179,6 +181,478 @@ func (rb *ResolverBuilder) convertResult(result *reveald.Result, config *QueryCo
 	}
 
 	return response
+}
+
+// BuildPrecompiledResolver creates a resolver function for a precompiled query
+func (rb *ResolverBuilder) BuildPrecompiledResolver(queryName string, config *PrecompiledQueryConfig) graphql.FieldResolveFn {
+	return func(params graphql.ResolveParams) (any, error) {
+		// Extract HTTP request from context for RootQueryBuilder
+		httpReq, _ := getHTTPRequest(params)
+
+		// Load the query (from file and/or builder) and merge with root queries
+		searchReq, err := config.LoadQuery(params.Args, httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load query: %w", err)
+		}
+
+		// Execute the search request
+		ctx := context.Background()
+		if params.Context != nil {
+			ctx = params.Context
+		}
+
+		// Build ES search
+		searchBuilder := rb.esClient.Search()
+		for _, idx := range config.GetIndices() {
+			searchBuilder = searchBuilder.Index(idx)
+		}
+
+		resp, err := searchBuilder.Request(searchReq).Do(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("search failed: %w", err)
+		}
+
+		// Convert ES response with typed aggregations
+		return rb.convertPrecompiledESResponseTyped(resp), nil
+	}
+}
+
+// convertPrecompiledESResponseTyped converts raw ES response to GraphQL format with typed aggregations
+func (rb *ResolverBuilder) convertPrecompiledESResponseTyped(resp *search.Response) map[string]any {
+	response := map[string]any{
+		"totalCount": int64(0),
+		"hits":       make([]map[string]any, 0),
+	}
+
+	// Parse total hits
+	if resp.Hits.Total != nil {
+		response["totalCount"] = int64(resp.Hits.Total.Value)
+	}
+
+	// Parse hits
+	hits := make([]map[string]any, 0)
+	for _, hit := range resp.Hits.Hits {
+		doc := make(map[string]any)
+		doc["id"] = hit.Id_
+		if hit.Source_ != nil {
+			var source map[string]any
+			if err := json.Unmarshal(hit.Source_, &source); err == nil {
+				for k, v := range source {
+					doc[k] = v
+				}
+				if _, hasID := doc["id"]; !hasID {
+					doc["id"] = hit.Id_
+				}
+			}
+		}
+		hits = append(hits, doc)
+	}
+	response["hits"] = hits
+
+	// Convert aggregations to typed object structure
+	if len(resp.Aggregations) > 0 {
+		aggObject := rb.convertESAggregatesToObject(resp.Aggregations)
+		response["aggregations"] = aggObject
+	}
+
+	return response
+}
+
+// convertESAggregatesToObject converts ES Aggregates map to typed object structure
+func (rb *ResolverBuilder) convertESAggregatesToObject(esAggs map[string]types.Aggregate) map[string]any {
+	result := make(map[string]any)
+
+	for aggName, agg := range esAggs {
+		result[aggName] = rb.convertAggregateValue(agg)
+	}
+
+	return result
+}
+
+// convertAggregateValue converts a single ES aggregate to its typed value
+func (rb *ResolverBuilder) convertAggregateValue(agg types.Aggregate) any {
+	switch v := agg.(type) {
+	case *types.StringTermsAggregate:
+		return map[string]any{
+			"buckets": rb.convertStringTermsBucketsToTyped(v.Buckets),
+		}
+	case *types.LongTermsAggregate:
+		return map[string]any{
+			"buckets": rb.convertLongTermsBucketsToTyped(v.Buckets),
+		}
+	case *types.DateHistogramAggregate:
+		return map[string]any{
+			"buckets": rb.convertDateHistogramBucketsToTyped(v.Buckets),
+		}
+	case *types.HistogramAggregate:
+		return map[string]any{
+			"buckets": rb.convertHistogramBucketsToTyped(v.Buckets),
+		}
+	case *types.FilterAggregate:
+		result := map[string]any{
+			"doc_count": int64(v.DocCount),
+		}
+		// Add nested aggregations as direct properties
+		if len(v.Aggregations) > 0 {
+			for nestedName, nestedAgg := range v.Aggregations {
+				result[nestedName] = rb.convertAggregateValue(nestedAgg)
+			}
+		}
+		return result
+	case *types.NestedAggregate:
+		result := map[string]any{
+			"doc_count": int64(v.DocCount),
+		}
+		// Add nested aggregations as direct properties
+		if len(v.Aggregations) > 0 {
+			for nestedName, nestedAgg := range v.Aggregations {
+				result[nestedName] = rb.convertAggregateValue(nestedAgg)
+			}
+		}
+		return result
+	case *types.FiltersAggregate:
+		// Filters aggregation contains named buckets - return as object
+		return rb.convertFiltersBucketsToObject(v.Buckets)
+	case *types.StatsAggregate:
+		stats := map[string]any{
+			"count": int64(v.Count),
+			"sum":   float64(v.Sum),
+		}
+		if v.Min != nil {
+			stats["min"] = float64(*v.Min)
+		}
+		if v.Max != nil {
+			stats["max"] = float64(*v.Max)
+		}
+		if v.Avg != nil {
+			stats["avg"] = float64(*v.Avg)
+		}
+		return stats
+	case *types.AvgAggregate:
+		if v.Value != nil {
+			return *v.Value
+		}
+		return nil
+	case *types.SumAggregate:
+		if v.Value != nil {
+			return *v.Value
+		}
+		return nil
+	case *types.MinAggregate:
+		if v.Value != nil {
+			return *v.Value
+		}
+		return nil
+	case *types.MaxAggregate:
+		if v.Value != nil {
+			return *v.Value
+		}
+		return nil
+	case *types.CardinalityAggregate:
+		return float64(v.Value)
+	}
+
+	// Unknown type - return nil
+	return nil
+}
+
+// convertStringTermsBucketsToTyped converts string terms buckets to typed format
+func (rb *ResolverBuilder) convertStringTermsBucketsToTyped(esBuckets types.BucketsStringTermsBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.StringTermsBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       b.Key,
+				"doc_count": int64(b.DocCount),
+			}
+			// Add nested aggregations as direct properties
+			if len(b.Aggregations) > 0 {
+				for nestedName, nestedAgg := range b.Aggregations {
+					bucket[nestedName] = rb.convertAggregateValue(nestedAgg)
+				}
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertLongTermsBucketsToTyped converts long terms buckets to typed format
+func (rb *ResolverBuilder) convertLongTermsBucketsToTyped(esBuckets types.BucketsLongTermsBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.LongTermsBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       fmt.Sprintf("%d", b.Key),
+				"doc_count": int64(b.DocCount),
+			}
+			// Add nested aggregations as direct properties
+			if len(b.Aggregations) > 0 {
+				for nestedName, nestedAgg := range b.Aggregations {
+					bucket[nestedName] = rb.convertAggregateValue(nestedAgg)
+				}
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertDateHistogramBucketsToTyped converts date histogram buckets to typed format
+func (rb *ResolverBuilder) convertDateHistogramBucketsToTyped(esBuckets types.BucketsDateHistogramBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.DateHistogramBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       b.KeyAsString,
+				"doc_count": int64(b.DocCount),
+			}
+			// Add nested aggregations as direct properties
+			if len(b.Aggregations) > 0 {
+				for nestedName, nestedAgg := range b.Aggregations {
+					bucket[nestedName] = rb.convertAggregateValue(nestedAgg)
+				}
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertHistogramBucketsToTyped converts histogram buckets to typed format
+func (rb *ResolverBuilder) convertHistogramBucketsToTyped(esBuckets types.BucketsHistogramBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.HistogramBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       fmt.Sprintf("%v", b.Key),
+				"doc_count": int64(b.DocCount),
+			}
+			// Add nested aggregations as direct properties
+			if len(b.Aggregations) > 0 {
+				for nestedName, nestedAgg := range b.Aggregations {
+					bucket[nestedName] = rb.convertAggregateValue(nestedAgg)
+				}
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertFiltersBucketsToObject converts filters buckets (named) to object
+func (rb *ResolverBuilder) convertFiltersBucketsToObject(esBuckets types.BucketsFiltersBucket) map[string]any {
+	result := make(map[string]any)
+
+	switch v := esBuckets.(type) {
+	case map[string]types.FiltersBucket:
+		for filterName, bucket := range v {
+			bucketObj := map[string]any{
+				"doc_count": int64(bucket.DocCount),
+			}
+			// Add nested aggregations as direct properties
+			if len(bucket.Aggregations) > 0 {
+				for nestedName, nestedAgg := range bucket.Aggregations {
+					bucketObj[nestedName] = rb.convertAggregateValue(nestedAgg)
+				}
+			}
+			result[filterName] = bucketObj
+		}
+	}
+
+	return result
+}
+
+// convertESAggregatesToArray converts ES Aggregates map to generic aggregation array
+func (rb *ResolverBuilder) convertESAggregatesToArray(esAggs map[string]types.Aggregate) []map[string]any {
+	result := make([]map[string]any, 0, len(esAggs))
+
+	for aggName, agg := range esAggs {
+		aggObj := map[string]any{
+			"name": aggName,
+		}
+
+		// Handle different aggregation types
+		switch v := agg.(type) {
+		case *types.StringTermsAggregate:
+			aggObj["buckets"] = rb.convertStringTermsBucketsToGeneric(v.Buckets)
+		case *types.LongTermsAggregate:
+			aggObj["buckets"] = rb.convertLongTermsBucketsToGeneric(v.Buckets)
+		case *types.DateHistogramAggregate:
+			aggObj["buckets"] = rb.convertDateHistogramBucketsToGeneric(v.Buckets)
+		case *types.HistogramAggregate:
+			aggObj["buckets"] = rb.convertHistogramBucketsToGeneric(v.Buckets)
+		case *types.FilterAggregate:
+			aggObj["doc_count"] = int64(v.DocCount)
+			if len(v.Aggregations) > 0 {
+				aggObj["sub_aggregations"] = rb.convertESAggregatesToArray(v.Aggregations)
+			}
+		case *types.NestedAggregate:
+			aggObj["doc_count"] = int64(v.DocCount)
+			if len(v.Aggregations) > 0 {
+				aggObj["sub_aggregations"] = rb.convertESAggregatesToArray(v.Aggregations)
+			}
+		case *types.FiltersAggregate:
+			// Filters aggregation contains named buckets
+			if len(v.Buckets.(map[string]types.FiltersBucket)) > 0 {
+				aggObj["sub_aggregations"] = rb.convertFiltersBucketsToArray(v.Buckets)
+			}
+		case *types.StatsAggregate:
+			stats := map[string]any{
+				"count": int64(v.Count),
+				"sum":   float64(v.Sum),
+			}
+			if v.Min != nil {
+				stats["min"] = float64(*v.Min)
+			}
+			if v.Max != nil {
+				stats["max"] = float64(*v.Max)
+			}
+			if v.Avg != nil {
+				stats["avg"] = float64(*v.Avg)
+			}
+			aggObj["stats"] = stats
+		case *types.AvgAggregate:
+			if v.Value != nil {
+				aggObj["value"] = *v.Value
+			}
+		case *types.SumAggregate:
+			if v.Value != nil {
+				aggObj["value"] = *v.Value
+			}
+		case *types.MinAggregate:
+			if v.Value != nil {
+				aggObj["value"] = *v.Value
+			}
+		case *types.MaxAggregate:
+			if v.Value != nil {
+				aggObj["value"] = *v.Value
+			}
+		case *types.CardinalityAggregate:
+			aggObj["value"] = float64(v.Value)
+		}
+
+		result = append(result, aggObj)
+	}
+
+	return result
+}
+
+// convertStringTermsBucketsToGeneric converts string terms buckets
+func (rb *ResolverBuilder) convertStringTermsBucketsToGeneric(esBuckets types.BucketsStringTermsBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.StringTermsBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       b.Key,
+				"doc_count": int64(b.DocCount),
+			}
+			if len(b.Aggregations) > 0 {
+				bucket["sub_aggregations"] = rb.convertESAggregatesToArray(b.Aggregations)
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertLongTermsBucketsToGeneric converts long terms buckets
+func (rb *ResolverBuilder) convertLongTermsBucketsToGeneric(esBuckets types.BucketsLongTermsBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.LongTermsBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       fmt.Sprintf("%d", b.Key),
+				"doc_count": int64(b.DocCount),
+			}
+			if len(b.Aggregations) > 0 {
+				bucket["sub_aggregations"] = rb.convertESAggregatesToArray(b.Aggregations)
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertDateHistogramBucketsToGeneric converts date histogram buckets
+func (rb *ResolverBuilder) convertDateHistogramBucketsToGeneric(esBuckets types.BucketsDateHistogramBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.DateHistogramBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       b.KeyAsString,
+				"doc_count": int64(b.DocCount),
+			}
+			if len(b.Aggregations) > 0 {
+				bucket["sub_aggregations"] = rb.convertESAggregatesToArray(b.Aggregations)
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertHistogramBucketsToGeneric converts histogram buckets
+func (rb *ResolverBuilder) convertHistogramBucketsToGeneric(esBuckets types.BucketsHistogramBucket) []map[string]any {
+	buckets := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case []types.HistogramBucket:
+		for _, b := range v {
+			bucket := map[string]any{
+				"key":       fmt.Sprintf("%v", b.Key),
+				"doc_count": int64(b.DocCount),
+			}
+			if len(b.Aggregations) > 0 {
+				bucket["sub_aggregations"] = rb.convertESAggregatesToArray(b.Aggregations)
+			}
+			buckets = append(buckets, bucket)
+		}
+	}
+
+	return buckets
+}
+
+// convertFiltersBucketsToArray converts filters buckets (named) to array
+func (rb *ResolverBuilder) convertFiltersBucketsToArray(esBuckets types.BucketsFiltersBucket) []map[string]any {
+	result := make([]map[string]any, 0)
+
+	switch v := esBuckets.(type) {
+	case map[string]types.FiltersBucket:
+		for filterName, bucket := range v {
+			aggObj := map[string]any{
+				"name":      filterName,
+				"doc_count": int64(bucket.DocCount),
+			}
+			if len(bucket.Aggregations) > 0 {
+				aggObj["sub_aggregations"] = rb.convertESAggregatesToArray(bucket.Aggregations)
+			}
+			result = append(result, aggObj)
+		}
+	}
+
+	return result
 }
 
 // GetResolverFunc returns a ResolverFunc for this builder

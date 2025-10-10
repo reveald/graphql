@@ -11,21 +11,21 @@ import (
 
 // SchemaGenerator generates GraphQL schemas from Elasticsearch mappings
 type SchemaGenerator struct {
-	mapping        *IndexMapping
-	config         *Config
-	typeCache      map[string]*graphql.Object
-	resolverFunc   ResolverFunc
-	bucketType     *graphql.Object
-	paginationType *graphql.Object
+	mapping         *IndexMapping
+	config          *Config
+	typeCache       map[string]*graphql.Object
+	resolverBuilder *ResolverBuilder
+	bucketType      *graphql.Object
+	paginationType  *graphql.Object
 }
 
 // NewSchemaGenerator creates a new schema generator
-func NewSchemaGenerator(mapping *IndexMapping, config *Config, resolverFunc ResolverFunc) *SchemaGenerator {
+func NewSchemaGenerator(mapping *IndexMapping, config *Config, resolverBuilder *ResolverBuilder) *SchemaGenerator {
 	sg := &SchemaGenerator{
-		mapping:      mapping,
-		config:       config,
-		typeCache:    make(map[string]*graphql.Object),
-		resolverFunc: resolverFunc,
+		mapping:         mapping,
+		config:          config,
+		typeCache:       make(map[string]*graphql.Object),
+		resolverBuilder: resolverBuilder,
 	}
 
 	// Initialize shared types
@@ -40,10 +40,20 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 	// Create the root Query type
 	queryFields := graphql.Fields{}
 
+	// Add regular queries
 	for queryName, queryConfig := range sg.config.Queries {
 		field, err := sg.generateQueryField(queryName, queryConfig)
 		if err != nil {
 			return graphql.Schema{}, fmt.Errorf("failed to generate query %s: %w", queryName, err)
+		}
+		queryFields[queryName] = field
+	}
+
+	// Add precompiled queries
+	for queryName, queryConfig := range sg.config.PrecompiledQueries {
+		field, err := sg.generatePrecompiledQueryField(queryName, queryConfig)
+		if err != nil {
+			return graphql.Schema{}, fmt.Errorf("failed to generate precompiled query %s: %w", queryName, err)
 		}
 		queryFields[queryName] = field
 	}
@@ -75,7 +85,7 @@ func (sg *SchemaGenerator) generateQueryField(queryName string, queryConfig *Que
 		Type:        resultType,
 		Description: queryConfig.Description,
 		Args:        args,
-		Resolve:     sg.resolverFunc(queryName, queryConfig),
+		Resolve:     sg.resolverBuilder.BuildResolver(queryName, queryConfig),
 	}, nil
 }
 

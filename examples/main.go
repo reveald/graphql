@@ -5,8 +5,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/graphql-go/graphql"
 	revealdgraphql "github.com/reveald/graphql"
 	"github.com/reveald/reveald"
 	"github.com/reveald/reveald/featureset"
@@ -83,6 +87,38 @@ func main() {
 		// },
 	})
 
+	// Add a PRECOMPILED QUERY with complex nested aggregations (using QueryBuilder)
+	config.AddPrecompiledQuery("productAnalytics", &revealdgraphql.PrecompiledQueryConfig{
+		Index:       "products",
+		Description: "Complex product analytics with nested aggregations and filters",
+		QueryBuilder: buildProductAnalyticsQuery,
+		Parameters: graphql.FieldConfigArgument{
+			"minPrice": &graphql.ArgumentConfig{
+				Type:        graphql.Float,
+				Description: "Minimum price filter",
+			},
+			"maxPrice": &graphql.ArgumentConfig{
+				Type:        graphql.Float,
+				Description: "Maximum price filter",
+			},
+			"categories": &graphql.ArgumentConfig{
+				Type:        graphql.NewList(graphql.String),
+				Description: "Filter by categories",
+			},
+		},
+		SampleParameters: map[string]any{
+			"minPrice": 0.0,
+			"maxPrice": 1000.0,
+		},
+	})
+
+	// Add a PRECOMPILED QUERY loaded from JSON file
+	config.AddPrecompiledQuery("productTrends", &revealdgraphql.PrecompiledQueryConfig{
+		Index:       "products",
+		Description: "Product trends loaded from JSON file",
+		QueryFile:   "queries/product-trends.json",
+	})
+
 	// Create Elasticsearch typed client for flexible querying
 	esClient, err := elasticsearch.NewTypedClient(elasticsearch.Config{
 		Addresses: []string{"http://localhost:9200"},
@@ -150,9 +186,183 @@ query {
     }
   }
 }
+
+# PRECOMPILED QUERY with QueryBuilder (complex nested aggregations):
+query {
+  productAnalytics(minPrice: 50, maxPrice: 500, categories: ["electronics"]) {
+    totalCount
+    aggregations {
+      name
+      buckets {
+        key
+        doc_count
+        sub_aggregations {
+          name
+          buckets { key doc_count }
+          stats { min max avg sum count }
+          value
+        }
+      }
+    }
+  }
+}
+
+# PRECOMPILED QUERY from JSON file:
+query {
+  productTrends {
+    totalCount
+    aggregations {
+      name
+      buckets {
+        key
+        doc_count
+        sub_aggregations {
+          name
+          doc_count
+          sub_aggregations {
+            name
+            doc_count
+          }
+          value
+        }
+      }
+    }
+  }
+}
 `)
 
 	if err := http.ListenAndServe(":8080", api); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+// buildProductAnalyticsQuery builds a complex analytics query with nested aggregations
+func buildProductAnalyticsQuery(args map[string]any) *search.Request {
+	// Build query based on parameters
+	var queries []types.Query
+
+	// Add price range filter if specified
+	if minPrice, ok := args["minPrice"].(float64); ok {
+		if maxPrice, ok := args["maxPrice"].(float64); ok {
+			queries = append(queries, types.Query{
+				Range: map[string]types.RangeQuery{
+					"price": types.NumberRangeQuery{
+						Gte: ptr(types.Float64(minPrice)),
+						Lte: ptr(types.Float64(maxPrice)),
+					},
+				},
+			})
+		}
+	}
+
+	// Add category filter if specified
+	if categoriesArg, ok := args["categories"].([]any); ok && len(categoriesArg) > 0 {
+		var categories []string
+		for _, cat := range categoriesArg {
+			if catStr, ok := cat.(string); ok {
+				categories = append(categories, strings.ToLower(catStr))
+			}
+		}
+		if len(categories) > 0 {
+			queries = append(queries, types.Query{
+				Terms: &types.TermsQuery{
+					TermsQuery: map[string]types.TermsQueryField{
+						"category.keyword": categories,
+					},
+				},
+			})
+		}
+	}
+
+	// Build final query
+	var finalQuery *types.Query
+	if len(queries) > 0 {
+		finalQuery = &types.Query{
+			Bool: &types.BoolQuery{
+				Must: queries,
+			},
+		}
+	}
+
+	// Build complex nested aggregations
+	aggs := map[string]types.Aggregations{
+		// Category breakdown with nested brand analysis
+		"by_category": {
+			Terms: &types.TermsAggregation{
+				Field: ptr("category.keyword"),
+				Size:  ptr(10),
+			},
+			Aggregations: map[string]types.Aggregations{
+				// Brand breakdown within each category
+				"by_brand": {
+					Terms: &types.TermsAggregation{
+						Field: ptr("brand.keyword"),
+						Size:  ptr(20),
+					},
+					Aggregations: map[string]types.Aggregations{
+						// Price range buckets (filters aggregation)
+						"price_ranges": {
+							Filters: &types.FiltersAggregation{
+								Filters: map[string]types.Query{
+									"budget": {
+										Range: map[string]types.RangeQuery{
+											"price": types.NumberRangeQuery{
+												Lt: ptr(types.Float64(100)),
+											},
+										},
+									},
+									"mid_range": {
+										Range: map[string]types.RangeQuery{
+											"price": types.NumberRangeQuery{
+												Gte: ptr(types.Float64(100)),
+												Lt:  ptr(types.Float64(500)),
+											},
+										},
+									},
+									"premium": {
+										Range: map[string]types.RangeQuery{
+											"price": types.NumberRangeQuery{
+												Gte: ptr(types.Float64(500)),
+											},
+										},
+									},
+								},
+								Keyed: ptr(true),
+							},
+						},
+						// Price statistics per brand
+						"price_stats": {
+							Stats: &types.StatsAggregation{
+								Field: ptr("price"),
+							},
+						},
+					},
+				},
+				// Average price per category
+				"avg_price_in_category": {
+					Avg: &types.AverageAggregation{
+						Field: ptr("price"),
+					},
+				},
+			},
+		},
+		// Overall price distribution histogram
+		"price_distribution": {
+			Histogram: &types.HistogramAggregation{
+				Field:    ptr("price"),
+				Interval: ptr(types.Float64(100)),
+			},
+		},
+	}
+
+	return &search.Request{
+		Size:         ptr(0), // We only want aggregations, not documents
+		Query:        finalQuery,
+		Aggregations: aggs,
+	}
+}
+
+// Helper function to create pointer to value
+func ptr[T any](v T) *T {
+	return &v
 }

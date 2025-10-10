@@ -1,0 +1,151 @@
+{
+  "size": 0,
+  "query": {
+    "range": {
+      "createdAt": {
+        "gte": "now-2M",
+        "lt": "now",
+        "time_zone": "Europe/Stockholm"
+      }
+    }
+  },
+  "aggs": {
+    "by_leadType": {
+      "terms": {
+        "field": "leadType.keyword",
+        "size": 1000
+      },
+      "aggs": {
+        "by_mechanism": {
+          "terms": {
+            "field": "leadSourceMechanism.keyword",
+            "size": 1000
+          },
+          "aggs": {
+            "periods": {
+              "filters": {
+                "filters": {
+                  "last_24h": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-24h",
+                        "lt": "now",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "prev_24h": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-48h",
+                        "lt": "now-24h",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "prev_24h_7d_ago": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-8d",
+                        "lt": "now-7d",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "last_7d": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-7d",
+                        "lt": "now",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "prev_7d": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-14d",
+                        "lt": "now-7d",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "last_30d": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-30d",
+                        "lt": "now",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  },
+                  "prev_30d": {
+                    "range": {
+                      "createdAt": {
+                        "gte": "now-60d",
+                        "lt": "now-30d",
+                        "time_zone": "Europe/Stockholm"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "last_30d_daily": {
+              "filter": {
+                "range": {
+                  "createdAt": {
+                    "gte": "now-30d",
+                    "lt": "now",
+                    "time_zone": "Europe/Stockholm"
+                  }
+                }
+              },
+              "aggs": {
+                "per_day": {
+                  "date_histogram": {
+                    "field": "createdAt",
+                    "calendar_interval": "day",
+                    "time_zone": "Europe/Stockholm",
+                    "min_doc_count": 0,
+                    "extended_bounds": {
+                      "min": "now-30d/d",
+                      "max": "now/d"
+                    },
+                    "format": "yyyy-MM-dd"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "last_30d_daily_all_mechanisms": {
+          "filter": {
+            "range": {
+              "createdAt": {
+                "gte": "now-30d",
+                "lt": "now",
+                "time_zone": "Europe/Stockholm"
+              }
+            }
+          },
+          "aggs": {
+            "per_day": {
+              "date_histogram": {
+                "field": "createdAt",
+                "calendar_interval": "day",
+                "time_zone": "Europe/Stockholm",
+                "min_doc_count": 0,
+                "extended_bounds": {
+                  "min": "now-30d/d",
+                  "max": "now/d"
+                },
+                "format": "yyyy-MM-dd"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

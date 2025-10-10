@@ -43,7 +43,7 @@ func New(backend reveald.Backend, mapping *IndexMapping, config *Config, opts ..
 	resolverBuilder := NewResolverBuilder(backend, mapping, api.esClient)
 
 	// Generate the schema
-	generator := NewSchemaGenerator(mapping, config, resolverBuilder.GetResolverFunc())
+	generator := NewSchemaGenerator(mapping, config, resolverBuilder)
 	schema, err := generator.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate schema: %w", err)

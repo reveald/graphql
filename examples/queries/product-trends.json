@@ -1,0 +1,60 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "range": {
+            "price": {
+              "gte": 0,
+              "lte": 1000
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aggs": {
+    "by_category": {
+      "terms": {
+        "field": "category.keyword",
+        "size": 10
+      },
+      "aggs": {
+        "price_ranges": {
+          "filters": {
+            "filters": {
+              "low": {
+                "range": {
+                  "price": {
+                    "lt": 100
+                  }
+                }
+              },
+              "medium": {
+                "range": {
+                  "price": {
+                    "gte": 100,
+                    "lt": 300
+                  }
+                }
+              },
+              "high": {
+                "range": {
+                  "price": {
+                    "gte": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "avg_price": {
+          "avg": {
+            "field": "price"
+          }
+        }
+      }
+    }
+  }
+}

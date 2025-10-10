@@ -174,6 +174,46 @@ func parseAggregations(esAggs map[string]types.Aggregate) (map[string][]*reveald
 				bucket.SubResultBuckets = subAggs
 			}
 			buckets = []*reveald.ResultBucket{bucket}
+		case *types.StatsAggregate:
+			// Store stats as a single bucket with stats data in Value
+			bucket := &reveald.ResultBucket{
+				Value:    aggName,
+				HitCount: int64(v.Count),
+				// Store stats values - we'll handle this specially in the resolver
+			}
+			buckets = []*reveald.ResultBucket{bucket}
+		case *types.AvgAggregate:
+			if v.Value != nil {
+				bucket := &reveald.ResultBucket{
+					Value:    aggName,
+					HitCount: int64(*v.Value),
+				}
+				buckets = []*reveald.ResultBucket{bucket}
+			}
+		case *types.SumAggregate:
+			if v.Value != nil {
+				bucket := &reveald.ResultBucket{
+					Value:    aggName,
+					HitCount: int64(*v.Value),
+				}
+				buckets = []*reveald.ResultBucket{bucket}
+			}
+		case *types.MinAggregate:
+			if v.Value != nil {
+				bucket := &reveald.ResultBucket{
+					Value:    aggName,
+					HitCount: int64(*v.Value),
+				}
+				buckets = []*reveald.ResultBucket{bucket}
+			}
+		case *types.MaxAggregate:
+			if v.Value != nil {
+				bucket := &reveald.ResultBucket{
+					Value:    aggName,
+					HitCount: int64(*v.Value),
+				}
+				buckets = []*reveald.ResultBucket{bucket}
+			}
 		}
 
 		if len(buckets) > 0 {
