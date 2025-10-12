@@ -14,6 +14,19 @@ type Config struct {
 
 	// PrecompiledQueries maps GraphQL query names to precompiled query configurations
 	PrecompiledQueries map[string]*PrecompiledQueryConfig
+
+	// EnableFederation enables Apollo Federation v2 support
+	// When enabled:
+	// - Adds @shareable, @link, and @key directives to schema
+	// - Marks common types (Bucket, Pagination, StatsValues, etc.) as @shareable
+	// - Exposes SDL endpoint at /_federation/sdl
+	// Default: false
+	EnableFederation bool
+
+	// QueryNamespace groups all queries under a namespace field
+	// Example: "leads" → query { leads { leadsOverview { ... } } }
+	// If empty, queries are at root level (default)
+	QueryNamespace string
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request

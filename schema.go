@@ -58,13 +58,53 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		queryFields[queryName] = field
 	}
 
+	// If QueryNamespace is set, wrap all queries in a namespace object
+	var rootQueryFields graphql.Fields
+	if sg.config.QueryNamespace != "" {
+		// Create namespace object type
+		namespaceTypeName := capitalize(sg.config.QueryNamespace) + "Entity"
+		namespaceType := graphql.NewObject(graphql.ObjectConfig{
+			Name:        namespaceTypeName,
+			Description: fmt.Sprintf("Grouped queries for %s", sg.config.QueryNamespace),
+			Fields:      queryFields,
+		})
+
+		// Root Query only has the namespace field
+		rootQueryFields = graphql.Fields{
+			sg.config.QueryNamespace: &graphql.Field{
+				Type:        namespaceType,
+				Description: fmt.Sprintf("Access %s queries", sg.config.QueryNamespace),
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					// Return empty object - actual queries resolve independently
+					return map[string]interface{}{}, nil
+				},
+			},
+		}
+	} else {
+		// No namespace - queries at root level
+		rootQueryFields = queryFields
+	}
+
 	rootQuery := graphql.ObjectConfig{
 		Name:   "Query",
-		Fields: queryFields,
+		Fields: rootQueryFields,
 	}
 
 	schemaConfig := graphql.SchemaConfig{
 		Query: graphql.NewObject(rootQuery),
+	}
+
+	// Add federation directives if enabled
+	if sg.config.EnableFederation {
+		federationDirectives := GetFederationDirectives()
+		schemaConfig.Directives = append(
+			[]*graphql.Directive{
+				graphql.IncludeDirective,
+				graphql.SkipDirective,
+				graphql.DeprecatedDirective,
+			},
+			federationDirectives...,
+		)
 	}
 
 	return graphql.NewSchema(schemaConfig)
@@ -133,11 +173,13 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 	}), nil
 }
 
-// generateDocumentType creates the GraphQL type for a document
+// generateDocumentType creates the GraphQL type for a document based on index name
 func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *QueryConfig) (*graphql.Object, error) {
-	typeName := fmt.Sprintf("%sDocument", capitalize(queryName))
+	// Use index name for document type (better for federation/entity resolution)
+	indexName := sg.getIndexNameForType(queryConfig)
+	typeName := fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
 
-	// Check cache
+	// Check cache - multiple queries on same index share the same document type
 	if cachedType, ok := sg.typeCache[typeName]; ok {
 		return cachedType, nil
 	}
@@ -639,4 +681,52 @@ func capitalize(s string) string {
 		return string(s[0]-32) + s[1:]
 	}
 	return s
+}
+
+// getIndexNameForType extracts the primary index name from query config
+func (sg *SchemaGenerator) getIndexNameForType(queryConfig *QueryConfig) string {
+	// Use first index if multiple
+	if len(queryConfig.Indices) > 0 {
+		return queryConfig.Indices[0]
+	}
+	// Fall back to single index
+	if queryConfig.Index != "" {
+		return queryConfig.Index
+	}
+	// Fall back to mapping index name
+	return sg.mapping.IndexName
+}
+
+// getPrecompiledIndexNameForType extracts the primary index name from precompiled query config
+func (sg *SchemaGenerator) getPrecompiledIndexNameForType(queryConfig *PrecompiledQueryConfig) string {
+	// Use first index if multiple
+	if len(queryConfig.Indices) > 0 {
+		return queryConfig.Indices[0]
+	}
+	// Fall back to single index
+	if queryConfig.Index != "" {
+		return queryConfig.Index
+	}
+	// Fall back to mapping index name
+	return sg.mapping.IndexName
+}
+
+// sanitizeTypeName converts index name to valid GraphQL type name
+// Examples:
+//   - "test-leads" → "TestLeads"
+//   - "products" → "Products"
+//   - "cross-domain-search-leads" → "CrossDomainSearchLeads"
+func sanitizeTypeName(indexName string) string {
+	// Replace hyphens and underscores with spaces for splitting
+	name := strings.ReplaceAll(indexName, "-", " ")
+	name = strings.ReplaceAll(name, "_", " ")
+
+	// Split into words and capitalize each
+	words := strings.Fields(name)
+	for i, word := range words {
+		words[i] = capitalize(word)
+	}
+
+	// Join without spaces
+	return strings.Join(words, "")
 }

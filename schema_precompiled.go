@@ -30,7 +30,7 @@ func (sg *SchemaGenerator) generatePrecompiledQueryField(queryName string, query
 	}
 
 	// Generate the result type with typed aggregations
-	resultType := sg.generateSimplePrecompiledResultType(queryName, aggsType)
+	resultType := sg.generateSimplePrecompiledResultType(queryName, queryConfig, aggsType)
 
 	// Use parameters from config, or empty if not specified
 	args := queryConfig.Parameters
@@ -47,12 +47,32 @@ func (sg *SchemaGenerator) generatePrecompiledQueryField(queryName string, query
 }
 
 // generateSimplePrecompiledResultType creates a result type with optional typed aggregations
-func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string, aggsType *graphql.Object) *graphql.Object {
+func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string, queryConfig *PrecompiledQueryConfig, aggsType *graphql.Object) *graphql.Object {
 	typeName := fmt.Sprintf("%sResult", capitalize(queryName))
 
 	// Check cache
 	if cachedType, ok := sg.typeCache[typeName]; ok {
 		return cachedType
+	}
+
+	// Use index name for document type (same as regular queries)
+	indexName := sg.getPrecompiledIndexNameForType(queryConfig)
+	docTypeName := fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
+
+	// Check if document type already exists in cache (shared across queries)
+	var docType *graphql.Object
+	if cached, ok := sg.typeCache[docTypeName]; ok {
+		docType = cached
+	} else {
+		// Create new document type with just id field (auto-resolves other fields)
+		docType = graphql.NewObject(graphql.ObjectConfig{
+			Name: docTypeName,
+			Fields: graphql.Fields{
+				"id": &graphql.Field{Type: graphql.String},
+				// Other fields will auto-resolve from ES response
+			},
+		})
+		sg.typeCache[docTypeName] = docType
 	}
 
 	fields := graphql.Fields{
@@ -61,13 +81,7 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 			Description: "Total number of hits",
 		},
 		"hits": &graphql.Field{
-			Type:        graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
-				Name: fmt.Sprintf("%sDocument", capitalize(queryName)),
-				Fields: graphql.Fields{
-					"id": &graphql.Field{Type: graphql.String},
-					// Documents are generic - fields will auto-resolve from ES response
-				},
-			})),
+			Type:        graphql.NewList(docType),
 			Description: "The search results",
 		},
 	}

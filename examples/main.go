@@ -37,6 +37,9 @@ func main() {
 	// Configure the GraphQL API
 	config := revealdgraphql.NewConfig()
 
+	// Enable Apollo Federation v2 support
+	config.EnableFederation = true
+
 	// Add a search query with features
 	config.AddQuery("searchProducts", &revealdgraphql.QueryConfig{
 		Index:       "products",

@@ -115,6 +115,12 @@ func (api *GraphQLAPI) GetSchema() graphql.Schema {
 	return api.schema
 }
 
+// ExportSDL exports the schema as SDL (Schema Definition Language)
+// with optional Apollo Federation v2 annotations
+func (api *GraphQLAPI) ExportSDL() string {
+	return ExportFederationSDL(api.schema, api.config.EnableFederation)
+}
+
 const graphiQLHTML = `
 <!DOCTYPE html>
 <html>
