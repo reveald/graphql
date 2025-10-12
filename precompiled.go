@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
-	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/graphql-go/graphql"
 )
 
@@ -15,7 +13,44 @@ import (
 // based on GraphQL arguments
 type QueryBuilderFunc func(args map[string]any) *search.Request
 
-// PrecompiledQueryConfig defines a precompiled Elasticsearch query with auto-generated schema
+// PrecompiledQueryConfig defines a precompiled Elasticsearch query with automatically
+// generated strongly-typed schema.
+//
+// Precompiled queries are ideal for:
+// - Complex aggregations with nested structure
+// - Queries that need strongly-typed GraphQL schemas
+// - Performance-critical queries (pre-validated at startup)
+// - Queries with predictable structure
+//
+// The system automatically generates GraphQL types by introspecting the ES query structure,
+// creating strongly-typed aggregation schemas instead of generic arrays.
+//
+// Example:
+//
+//	config.AddPrecompiledQuery("leadsOverview", &PrecompiledQueryConfig{
+//	    Index:        "leads",
+//	    QueryBuilder: buildLeadsQuery,  // OR QueryJSON: string(embeddedQuery)
+//	    Parameters: graphql.FieldConfigArgument{
+//	        "markets": &graphql.ArgumentConfig{Type: graphql.NewList(graphql.String)},
+//	    },
+//	    RootQueryBuilder: func(r *http.Request) (*types.Query, error) {
+//	        // Optional: Add tenant filtering from headers
+//	        return buildTenantFilter(r.Header.Get("X-Tenant-ID"))
+//	    },
+//	})
+//
+// This generates a GraphQL schema with typed aggregations:
+//
+//	type LeadsOverviewResult {
+//	    totalCount: Int
+//	    aggregations: LeadsOverviewAggregations
+//	}
+//
+//	type LeadsOverviewAggregations {
+//	    by_leadType: LeadsOverviewBy_leadType
+//	}
+//
+// Instead of generic: aggregations: [GenericAggregation]
 type PrecompiledQueryConfig struct {
 	// Index is the Elasticsearch index to query
 	Index string
@@ -24,16 +59,12 @@ type PrecompiledQueryConfig struct {
 	Indices []string
 
 	// QueryBuilder builds the Elasticsearch search request from GraphQL arguments
-	// Either QueryBuilder, QueryFile, or QueryJSON must be specified
+	// Mutually exclusive with QueryJSON - specify only one
 	QueryBuilder QueryBuilderFunc
-
-	// QueryFile is a path to a JSON file containing the Elasticsearch query
-	// The file should contain a valid search.Request JSON
-	QueryFile string
 
 	// QueryJSON is a JSON string containing the Elasticsearch query
 	// Useful with Go embed: QueryJSON: string(embeddedQuery)
-	// Priority: QueryJSON > QueryFile > QueryBuilder
+	// Mutually exclusive with QueryBuilder - specify only one
 	QueryJSON string
 
 	// Parameters defines the GraphQL input arguments for this query
@@ -47,12 +78,8 @@ type PrecompiledQueryConfig struct {
 	// the aggregation structure
 	SampleParameters map[string]any
 
-	// RootQuery is a base Elasticsearch query that is always applied (merged with user queries)
-	// Useful for static filtering (e.g., always filter by active=true)
-	RootQuery *types.Query
-
 	// RootQueryBuilder dynamically builds a root query based on the HTTP request
-	// If both RootQuery and RootQueryBuilder are set, both are merged with the final query
+	// The root query is merged with the main query
 	// Useful for tenant filtering, permissions, etc.
 	RootQueryBuilder RootQueryBuilder
 }
@@ -70,8 +97,15 @@ func (pc *PrecompiledQueryConfig) GetIndices() []string {
 
 // Validate checks if the configuration is valid
 func (pc *PrecompiledQueryConfig) Validate() error {
-	if pc.QueryBuilder == nil && pc.QueryFile == "" && pc.QueryJSON == "" {
-		return fmt.Errorf("either QueryBuilder, QueryFile, or QueryJSON must be specified")
+	// Exactly one of QueryBuilder or QueryJSON must be specified
+	hasBuilder := pc.QueryBuilder != nil
+	hasJSON := pc.QueryJSON != ""
+
+	if !hasBuilder && !hasJSON {
+		return fmt.Errorf("either QueryBuilder or QueryJSON must be specified")
+	}
+	if hasBuilder && hasJSON {
+		return fmt.Errorf("QueryBuilder and QueryJSON are mutually exclusive - specify only one")
 	}
 
 	if len(pc.GetIndices()) == 0 {
@@ -81,63 +115,38 @@ func (pc *PrecompiledQueryConfig) Validate() error {
 	return nil
 }
 
-// LoadQuery loads the query, either from JSON string, file, or builder
+// LoadQuery loads the query from JSON string or builder
 // If httpReq is provided, RootQueryBuilder will be called to inject dynamic base queries
 func (pc *PrecompiledQueryConfig) LoadQuery(args map[string]any, httpReq *http.Request) (*search.Request, error) {
 	var req *search.Request
-	var data []byte
-	var err error
 
-	// Priority: QueryJSON > QueryFile > QueryBuilder
-	if pc.QueryJSON != "" {
-		// Load from JSON string (e.g., from embed)
-		data = []byte(pc.QueryJSON)
-	} else if pc.QueryFile != "" {
-		// Load from file
-		data, err = os.ReadFile(pc.QueryFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read query file %s: %w", pc.QueryFile, err)
-		}
-	}
-
-	// Unmarshal JSON if we have data
-	if len(data) > 0 {
-		req = &search.Request{}
-		if err := json.Unmarshal(data, req); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal query JSON: %w", err)
-		}
-	}
-
-	// Apply QueryBuilder if specified
+	// Priority: QueryBuilder > QueryJSON
 	if pc.QueryBuilder != nil {
-		builderReq := pc.QueryBuilder(args)
-		if builderReq == nil {
+		req = pc.QueryBuilder(args)
+		if req == nil {
 			return nil, fmt.Errorf("QueryBuilder returned nil")
 		}
-
-		// If we loaded from JSON, QueryBuilder can modify it
-		// For now, QueryBuilder result takes precedence (replaces JSON-based query)
-		// TODO: Could add merging logic here if needed
-		req = builderReq
+	} else if pc.QueryJSON != "" {
+		// Load from JSON string (e.g., from embed)
+		req = &search.Request{}
+		if err := json.Unmarshal([]byte(pc.QueryJSON), req); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal query JSON: %w", err)
+		}
 	}
 
 	if req == nil {
 		return nil, fmt.Errorf("no query produced")
 	}
 
-	// Apply root queries (merge static and dynamic root queries with the main query)
-	var dynamicRootQuery *types.Query
+	// Apply root query builder if provided
 	if pc.RootQueryBuilder != nil && httpReq != nil {
-		var err error
-		dynamicRootQuery, err = pc.RootQueryBuilder(httpReq)
+		dynamicRootQuery, err := pc.RootQueryBuilder(httpReq)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build root query: %w", err)
 		}
-	}
-
-	// Merge root queries with the request query
-	if pc.RootQuery != nil || dynamicRootQuery != nil {
-		req.Query = mergeQueries(pc.RootQuery, dynamicRootQuery, req.Query)
+		if dynamicRootQuery != nil {
+			req.Query = mergeQueries(dynamicRootQuery, req.Query)
+		}
 	}
 
 	return req, nil

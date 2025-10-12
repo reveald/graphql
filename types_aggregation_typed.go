@@ -8,6 +8,32 @@ import (
 	"github.com/graphql-go/graphql"
 )
 
+// Typed Aggregation Schema Generation
+//
+// This file contains the logic for automatically generating strongly-typed GraphQL schemas
+// from Elasticsearch aggregation definitions. Instead of using generic array-based aggregations
+// with "name" fields, this system generates specific typed fields for each aggregation.
+//
+// Example:
+// Instead of: aggregations { name buckets { key sub_aggregations { name ... } } }
+// You get:    aggregations { by_leadType { buckets { key by_mechanism { ... } } } }
+//
+// The system introspects the ES aggregation structure at schema generation time and creates:
+// - Named fields for each aggregation (e.g., "by_leadType", "by_mechanism")
+// - Typed bucket structures with nested aggregation fields
+// - Named filter fields for Filters aggregations (e.g., "last_24h", "prev_24h")
+// - Proper type hierarchy matching the ES aggregation tree
+//
+// Supported aggregation types:
+// - Terms: Generates type with buckets array
+// - DateHistogram: Generates type with buckets array
+// - Histogram: Generates type with buckets array
+// - Filters: Generates type with named filter fields (not array)
+// - Filter: Generates type with doc_count + nested aggregations
+// - Nested: Similar to Filter
+// - Metric aggregations (Avg, Sum, Min, Max, Cardinality): Return scalar values
+// - Stats: Returns StatsValues object
+
 // generateTypedAggregationsType creates a strongly-typed aggregations object from ES aggregation definitions
 func (sg *SchemaGenerator) generateTypedAggregationsType(queryName string, aggs map[string]types.Aggregations) *graphql.Object {
 	if len(aggs) == 0 {

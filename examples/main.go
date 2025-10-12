@@ -112,11 +112,39 @@ func main() {
 		},
 	})
 
-	// Add a PRECOMPILED QUERY loaded from JSON file
+	// Add a PRECOMPILED QUERY using QueryJSON (embedded JSON)
 	config.AddPrecompiledQuery("productTrends", &revealdgraphql.PrecompiledQueryConfig{
 		Index:       "products",
-		Description: "Product trends loaded from JSON file",
-		QueryFile:   "queries/product-trends.json",
+		Description: "Product trends using QueryJSON",
+		QueryJSON: `{
+			"size": 0,
+			"query": {
+				"bool": {
+					"must": [
+						{"range": {"price": {"gte": 0, "lte": 1000}}}
+					]
+				}
+			},
+			"aggs": {
+				"by_category": {
+					"terms": {"field": "category.keyword", "size": 10},
+					"aggs": {
+						"price_ranges": {
+							"filters": {
+								"filters": {
+									"low": {"range": {"price": {"lt": 100}}},
+									"medium": {"range": {"price": {"gte": 100, "lt": 300}}},
+									"high": {"range": {"price": {"gte": 300}}}
+								}
+							}
+						},
+						"avg_price": {
+							"avg": {"field": "price"}
+						}
+					}
+				}
+			}
+		}`,
 	})
 
 	// Create Elasticsearch typed client for flexible querying
@@ -187,43 +215,61 @@ query {
   }
 }
 
-# PRECOMPILED QUERY with QueryBuilder (complex nested aggregations):
+# PRECOMPILED QUERY with QueryBuilder (strongly-typed aggregations):
 query {
   productAnalytics(minPrice: 50, maxPrice: 500, categories: ["electronics"]) {
     totalCount
     aggregations {
-      name
-      buckets {
-        key
-        doc_count
-        sub_aggregations {
-          name
-          buckets { key doc_count }
-          stats { min max avg sum count }
-          value
+      by_category {
+        buckets {
+          key
+          doc_count
+          by_brand {
+            buckets {
+              key
+              doc_count
+              price_ranges {
+                budget { doc_count }
+                mid_range { doc_count }
+                premium { doc_count }
+              }
+              price_stats {
+                min
+                max
+                avg
+                sum
+                count
+              }
+            }
+          }
+          avg_price_in_category
+        }
+      }
+      price_distribution {
+        buckets {
+          key
+          doc_count
         }
       }
     }
   }
 }
 
-# PRECOMPILED QUERY from JSON file:
+# PRECOMPILED QUERY with QueryJSON (strongly-typed aggregations):
 query {
   productTrends {
     totalCount
     aggregations {
-      name
-      buckets {
-        key
-        doc_count
-        sub_aggregations {
-          name
+      by_category {
+        buckets {
+          key
           doc_count
-          sub_aggregations {
-            name
-            doc_count
+          price_ranges {
+            low { doc_count }
+            medium { doc_count }
+            high { doc_count }
           }
-          value
+          avg_price
         }
       }
     }

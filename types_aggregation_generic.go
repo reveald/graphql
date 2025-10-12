@@ -5,6 +5,15 @@ import (
 )
 
 // Generic aggregation types that can represent any Elasticsearch aggregation response
+//
+// NOTE: These types are primarily used as FALLBACK types when strongly-typed
+// aggregations cannot be generated. For precompiled queries, the system
+// automatically generates typed aggregation schemas (see types_aggregation_typed.go).
+//
+// Types in this file:
+// - GenericAggregationType: Fallback type for unknown/unsupported aggregation types
+// - GenericBucketType: Generic bucket structure (currently unused in typed system)
+// - StatsValuesType: Actively used by typed aggregations for stats aggregation values
 
 var (
 	// GenericBucketType represents a bucket from any bucketing aggregation

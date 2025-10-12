@@ -60,17 +60,17 @@ func main() {
 	// Configure the GraphQL API
 	config := revealdgraphql.NewConfig()
 
-	// Add PRECOMPILED QUERY from JSON file (no market filter)
+	// Add PRECOMPILED QUERY with simple QueryBuilder (no parameters)
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       leadsIndex,
-		Description: "Leads overview with statistics by type and mechanism (from JSON file)",
-		QueryFile:   "queries/leads-overview.json",
+		Index:        leadsIndex,
+		Description:  "Leads overview with statistics by type and mechanism",
+		QueryBuilder: func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
 	})
 
 	// Add PRECOMPILED QUERY with QueryBuilder (supports market filtering)
 	config.AddPrecompiledQuery("leadsOverviewByMarket", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       leadsIndex,
-		Description: "Leads overview with market filtering (using QueryBuilder)",
+		Index:        leadsIndex,
+		Description:  "Leads overview with market filtering",
 		QueryBuilder: buildLeadsOverviewQuery,
 		Parameters: graphql.FieldConfigArgument{
 			"markets": &graphql.ArgumentConfig{
@@ -82,9 +82,9 @@ func main() {
 
 	// Add PRECOMPILED QUERY with RootQueryBuilder (demonstrates tenant/permission filtering)
 	config.AddPrecompiledQuery("leadsOverviewWithTenant", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       leadsIndex,
-		Description: "Leads overview with dynamic tenant filtering from HTTP headers",
-		QueryFile:   "queries/leads-overview.json",
+		Index:        leadsIndex,
+		Description:  "Leads overview with dynamic tenant filtering from HTTP headers",
+		QueryBuilder: func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
 		RootQueryBuilder: func(r *http.Request) (*types.Query, error) {
 			// Example: Filter by tenant ID from header
 			tenantID := r.Header.Get("X-Tenant-ID")
