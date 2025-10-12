@@ -17,6 +17,16 @@ A GraphQL API generator for Elasticsearch based on [reveald](https://github.com/
 - **Flexible Configuration**: Define multiple queries with different feature sets
 - **Static Root Queries**: Apply base filters (like tenant isolation) that are always merged with user queries
 
+## Prerequisites
+
+Before using this library, you need:
+
+- **Go 1.18+** (for generics and `any` type support)
+- **Elasticsearch** running and accessible (tested with ES 7.x/8.x)
+- **reveald library** - This library is built on top of [reveald](https://github.com/reveald/reveald) and requires it as a dependency
+
+The library does not work without an active Elasticsearch cluster and reveald backend.
+
 ## Installation
 
 ```bash
