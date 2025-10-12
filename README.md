@@ -72,24 +72,25 @@ func main() {
     mappingData, _ := os.ReadFile("mapping.json")
     mapping, _ := revealdgraphql.ParseMapping("products", mappingData)
 
-    config := revealdgraphql.NewConfig()
-    config.AddQuery("searchProducts", &revealdgraphql.QueryConfig{
-        Index: "products",
-        Features: []reveald.Feature{
-            featureset.NewPaginationFeature(),
-            featureset.NewSortingFeature("sort",
-                featureset.WithSortOption("price-asc", "price", true),
-                featureset.WithSortOption("price-desc", "price", false),
-                featureset.WithDefaultSortOption("price-desc"),
-            ),
-            featureset.NewDynamicFilterFeature("category"),
-            featureset.NewDynamicFilterFeature("brand"),
-        },
-        EnableAggregations: true,
-        EnablePagination:   true,
-        EnableSorting:      true,
-        // Aggregations and sort options are AUTO-DETECTED from Features!
-    })
+    // Configure with functional options
+    config := revealdgraphql.NewConfig(
+        revealdgraphql.WithQuery("searchProducts", &revealdgraphql.QueryConfig{
+            Features: []reveald.Feature{
+                featureset.NewPaginationFeature(),
+                featureset.NewSortingFeature("sort",
+                    featureset.WithSortOption("price-asc", "price", true),
+                    featureset.WithSortOption("price-desc", "price", false),
+                    featureset.WithDefaultSortOption("price-desc"),
+                ),
+                featureset.NewDynamicFilterFeature("category"),
+                featureset.NewDynamicFilterFeature("brand"),
+            },
+            EnableAggregations: true,
+            EnablePagination:   true,
+            EnableSorting:      true,
+            // Aggregations and sort options are AUTO-DETECTED from Features!
+        }),
+    )
 
     api, _ := revealdgraphql.New(backend, mapping, config)
 
@@ -276,12 +277,47 @@ See `examples/process-flow/features/` for implementations.
 
 ## Configuration
 
+### Functional Configuration Pattern
+
+The library uses functional options for clean, flexible configuration:
+
+```go
+// Create config with options
+config := revealdgraphql.NewConfig(
+    revealdgraphql.WithEnableFederation(),
+    revealdgraphql.WithQueryNamespace("Products", false),
+    revealdgraphql.WithQuery("searchProducts", &QueryConfig{...}),
+    revealdgraphql.WithQuery("allProducts", &QueryConfig{...}),
+)
+
+// Or use the traditional approach
+config := revealdgraphql.NewConfig()
+config.AddQuery("searchProducts", &QueryConfig{...})
+config.AddQuery("allProducts", &QueryConfig{...})
+```
+
+### Configuration Options
+
+```go
+// WithEnableFederation enables Apollo Federation v2 support
+revealdgraphql.WithEnableFederation()
+
+// WithQueryNamespace groups queries under a namespace type
+// Example: WithQueryNamespace("Leads", false) → query { leads { ... } }
+// The second parameter controls "extend type" for federation
+revealdgraphql.WithQueryNamespace("Products", false)
+
+// WithQuery adds a reveald feature-based query
+revealdgraphql.WithQuery("name", &QueryConfig{...})
+
+// WithPrecompiledQuery adds a precompiled query
+revealdgraphql.WithPrecompiledQuery("name", &PrecompiledQueryConfig{...})
+```
+
 ### QueryConfig
 
 ```go
 type QueryConfig struct {
-    Index       string              // Elasticsearch index name
-    Indices     []string            // Multiple indices (alternative to Index)
     Features    []reveald.Feature   // reveald features to apply
     Description string              // Query description for schema
 
@@ -321,19 +357,20 @@ esClient, _ := elasticsearch.NewTypedClient(elasticsearch.Config{
     Addresses: []string{"http://localhost:9200"},
 })
 
-// Configure query with ES querying enabled
-config.AddQuery("flexibleSearch", &QueryConfig{
-    Index: "products",
-    EnableElasticQuerying: true,
-    EnableAggregations: true,
+// Configure with functional options
+config := revealdgraphql.NewConfig(
+    revealdgraphql.WithQuery("flexibleSearch", &QueryConfig{
+        EnableElasticQuerying: true,
+        EnableAggregations: true,
 
-    // Optional: Always apply static filtering (e.g., tenant isolation)
-    RootQuery: &types.Query{
-        Term: map[string]types.TermQuery{
-            "active": {Value: true},
+        // Optional: Always apply static filtering (e.g., tenant isolation)
+        RootQuery: &types.Query{
+            Term: map[string]types.TermQuery{
+                "active": {Value: true},
+            },
         },
-    },
-})
+    }),
+)
 
 // Create API with ES client
 api, _ := New(backend, mapping, config, WithESClient(esClient))

@@ -80,7 +80,7 @@ All bucket types are automatically marked as `@shareable` so they can be shared 
 
 ## Query Namespace
 
-The example uses `config.QueryNamespace = "leads"` to group all queries:
+The example uses `config.QueryNamespace = "Leads"` to group all queries:
 
 **Without namespace** (default):
 ```graphql
@@ -90,7 +90,7 @@ query {
 }
 ```
 
-**With namespace** (`config.QueryNamespace = "leads"`):
+**With namespace** (`config.QueryNamespace = "Leads"`):
 ```graphql
 query {
   leads {
@@ -103,13 +103,54 @@ query {
 The generated SDL shows:
 ```graphql
 type Query {
-  leads: LeadsEntity
+  """Access Leads queries"""
+  leads: Leads
 }
 
-type LeadsEntity {
+type Leads {
+  """Leads overview with statistics"""
+  leadsOverview: LeadsOverviewResult
+  """Leads overview with market filtering"""
+  leadsOverviewByMarket: LeadsOverviewByMarketResult
+}
+```
+
+**Note:** The QueryNamespace value becomes the type name directly. The field name is the lowercased version. Examples:
+- `"Leads"` → type `Leads`, field `leads`
+- `"CrossDomainSearchLeads"` → type `CrossDomainSearchLeads`, field `crossDomainSearchLeads`
+
+### Extending Types from Other Subgraphs
+
+If the namespace type is defined in another subgraph, set `ExtendQueryNamespace = true`:
+
+```go
+config.QueryNamespace = "Leads"
+config.ExtendQueryNamespace = true  // Leads is defined in another subgraph
+```
+
+**Without extend** (`ExtendQueryNamespace = false`, default):
+```graphql
+type Leads {
   leadsOverview: LeadsOverviewResult
   leadsOverviewByMarket: LeadsOverviewByMarketResult
 }
+```
+
+**With extend** (`ExtendQueryNamespace = true`):
+```graphql
+extend type Leads {
+  leadsOverview: LeadsOverviewResult
+  leadsOverviewByMarket: LeadsOverviewByMarketResult
+}
+```
+
+**Testing:**
+```bash
+# Generate schema with type definition
+go run main.go > schema-owner.graphql
+
+# Generate schema extending existing type
+EXTEND_TYPE=true go run main.go > schema-extend.graphql
 ```
 
 ## Customization

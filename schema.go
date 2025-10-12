@@ -61,19 +61,22 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 	// If QueryNamespace is set, wrap all queries in a namespace object
 	var rootQueryFields graphql.Fields
 	if sg.config.QueryNamespace != "" {
-		// Create namespace object type
-		namespaceTypeName := capitalize(sg.config.QueryNamespace) + "Entity"
+		// Use QueryNamespace as the type name directly
+		namespaceTypeName := capitalize(sg.config.QueryNamespace)
 		namespaceType := graphql.NewObject(graphql.ObjectConfig{
 			Name:        namespaceTypeName,
 			Description: fmt.Sprintf("Grouped queries for %s", sg.config.QueryNamespace),
 			Fields:      queryFields,
 		})
 
+		// Determine field name (lowercase version of namespace)
+		fieldName := strings.ToLower(sg.config.QueryNamespace[:1]) + sg.config.QueryNamespace[1:]
+
 		// Root Query only has the namespace field
 		rootQueryFields = graphql.Fields{
-			sg.config.QueryNamespace: &graphql.Field{
+			fieldName: &graphql.Field{
 				Type:        namespaceType,
-				Description: fmt.Sprintf("Access %s queries", sg.config.QueryNamespace),
+				Description: fmt.Sprintf("Access %s queries", namespaceTypeName),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					// Return empty object - actual queries resolve independently
 					return map[string]interface{}{}, nil
@@ -685,28 +688,11 @@ func capitalize(s string) string {
 
 // getIndexNameForType extracts the primary index name from query config
 func (sg *SchemaGenerator) getIndexNameForType(queryConfig *QueryConfig) string {
-	// Use first index if multiple
-	if len(queryConfig.Indices) > 0 {
-		return queryConfig.Indices[0]
-	}
-	// Fall back to single index
-	if queryConfig.Index != "" {
-		return queryConfig.Index
-	}
-	// Fall back to mapping index name
 	return sg.mapping.IndexName
 }
 
 // getPrecompiledIndexNameForType extracts the primary index name from precompiled query config
 func (sg *SchemaGenerator) getPrecompiledIndexNameForType(queryConfig *PrecompiledQueryConfig) string {
-	// Use first index if multiple
-	if len(queryConfig.Indices) > 0 {
-		return queryConfig.Indices[0]
-	}
-	// Fall back to single index
-	if queryConfig.Index != "" {
-		return queryConfig.Index
-	}
 	// Fall back to mapping index name
 	return sg.mapping.IndexName
 }

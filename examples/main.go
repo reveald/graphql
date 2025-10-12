@@ -34,15 +34,14 @@ func main() {
 		log.Fatalf("Failed to parse mapping: %v", err)
 	}
 
-	// Configure the GraphQL API
-	config := revealdgraphql.NewConfig()
-
-	// Enable Apollo Federation v2 support
-	config.EnableFederation = true
+	// Configure the GraphQL API with functional options
+	config := revealdgraphql.NewConfig(
+		revealdgraphql.WithEnableFederation(),
+		// Optional: revealdgraphql.WithQueryNamespace("Products", false),
+	)
 
 	// Add a search query with features
 	config.AddQuery("searchProducts", &revealdgraphql.QueryConfig{
-		Index:       "products",
 		Description: "Search for products with filtering, pagination, and aggregations",
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(
@@ -65,7 +64,6 @@ func main() {
 
 	// Add another query for all products (no active filter)
 	config.AddQuery("allProducts", &revealdgraphql.QueryConfig{
-		Index:       "products",
 		Description: "Get all products without filters",
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(
@@ -77,7 +75,6 @@ func main() {
 
 	// Add a flexible query with typed Elasticsearch querying
 	config.AddQuery("flexibleSearch", &revealdgraphql.QueryConfig{
-		Index:                 "products",
 		Description:           "Flexible search with full ES query/aggregation support",
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
@@ -92,8 +89,7 @@ func main() {
 
 	// Add a PRECOMPILED QUERY with complex nested aggregations (using QueryBuilder)
 	config.AddPrecompiledQuery("productAnalytics", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       "products",
-		Description: "Complex product analytics with nested aggregations and filters",
+		Description:  "Complex product analytics with nested aggregations and filters",
 		QueryBuilder: buildProductAnalyticsQuery,
 		Parameters: graphql.FieldConfigArgument{
 			"minPrice": &graphql.ArgumentConfig{
@@ -117,7 +113,6 @@ func main() {
 
 	// Add a PRECOMPILED QUERY using QueryJSON (embedded JSON)
 	config.AddPrecompiledQuery("productTrends", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       "products",
 		Description: "Product trends using QueryJSON",
 		QueryJSON: `{
 			"size": 0,
@@ -277,8 +272,7 @@ query {
       }
     }
   }
-}
-`)
+}`)
 
 	if err := http.ListenAndServe(":8080", api); err != nil {
 		log.Fatalf("Server failed: %v", err)

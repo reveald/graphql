@@ -58,13 +58,10 @@ func main() {
 	}
 
 	// Configure the GraphQL API
-	config := revealdgraphql.NewConfig()
-
-	// Enable Apollo Federation v2 support (adds @shareable directives to common types)
-	config.EnableFederation = true
-
-	// Group queries under "leads" namespace: query { leads { leadsOverview { ... } } }
-	config.QueryNamespace = "leads"
+	config := revealdgraphql.NewConfig(
+		revealdgraphql.WithEnableFederation(),
+		revealdgraphql.WithQueryNamespace("Leads", false), // false = define type, true = extend type
+	)
 
 	// Add PRECOMPILED QUERY with simple QueryBuilder (no parameters)
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
@@ -129,84 +126,82 @@ func main() {
 	fmt.Println("Open http://localhost:8080/graphql in your browser to use GraphiQL")
 	fmt.Println()
 	fmt.Println("Example queries (namespaced under 'leads' with strongly-typed aggregations):")
-	fmt.Println(`
-# 1. Leads overview (no filters):
-query {
-  leads {
-    leadsOverview {
-      totalCount
-      aggregations {
-        by_leadType {
-          buckets {
-            key
-            doc_count
-            by_mechanism {
-              buckets {
-                key
-                doc_count
-                periods {
-                  last_24h { doc_count }
-                  prev_24h { doc_count }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
+	fmt.Println(`# 1. Leads overview (no filters):
+			query {
+			leads {
+				leadsOverview {
+				totalCount
+				aggregations {
+					by_leadType {
+					buckets {
+						key
+						doc_count
+						by_mechanism {
+						buckets {
+							key
+							doc_count
+							periods {
+							last_24h { doc_count }
+							prev_24h { doc_count }
+							}
+						}
+						}
+					}
+					}
+				}
+				}
+			}
+			}
 
-# 2. Leads overview with market filter:
-query {
-  leads {
-    leadsOverviewByMarket(markets: ["SE", "NO"]) {
-      totalCount
-      aggregations {
-        by_leadType {
-          buckets {
-            key
-            doc_count
-            by_mechanism {
-              buckets {
-                key
-                doc_count
-                periods {
-                  last_24h { doc_count }
-                  prev_24h { doc_count }
-                  prev_24h_7d_ago { doc_count }
-                  last_7d { doc_count }
-                  prev_7d { doc_count }
-                  last_30d { doc_count }
-                  prev_30d { doc_count }
-                }
-                last_30d_daily {
-                  doc_count
-                  per_day {
-                    buckets {
-                      key
-                      doc_count
-                    }
-                  }
-                }
-              }
-            }
-            last_30d_daily_all_mechanisms {
-              doc_count
-              per_day {
-                buckets {
-                  key
-                  doc_count
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-`)
+			# 2. Leads overview with market filter:
+			query {
+			leads {
+				leadsOverviewByMarket(markets: ["SE", "NO"]) {
+				totalCount
+				aggregations {
+					by_leadType {
+					buckets {
+						key
+						doc_count
+						by_mechanism {
+						buckets {
+							key
+							doc_count
+							periods {
+							last_24h { doc_count }
+							prev_24h { doc_count }
+							prev_24h_7d_ago { doc_count }
+							last_7d { doc_count }
+							prev_7d { doc_count }
+							last_30d { doc_count }
+							prev_30d { doc_count }
+							}
+							last_30d_daily {
+							doc_count
+							per_day {
+								buckets {
+								key
+								doc_count
+								}
+							}
+							}
+						}
+						}
+						last_30d_daily_all_mechanisms {
+						doc_count
+						per_day {
+							buckets {
+							key
+							doc_count
+							}
+						}
+						}
+					}
+					}
+				}
+				}
+			}
+			}`)
 
 	if err := http.ListenAndServe(":8080", api); err != nil {
 		log.Fatalf("Server failed: %v", err)

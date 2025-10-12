@@ -47,7 +47,7 @@ func GenerateSchemaSDL(mapping *IndexMapping, config *Config) (string, error) {
 	}
 
 	// Export as SDL
-	sdl := ExportFederationSDL(schema, config.EnableFederation)
+	sdl := ExportFederationSDL(schema, config)
 	return sdl, nil
 }
 

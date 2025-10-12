@@ -42,34 +42,29 @@ func main() {
 		log.Fatalf("Failed to parse mapping: %v", err)
 	}
 
-	// Create config with your queries
-	config := revealdgraphql.NewConfig()
+	// Create config with functional options (all configuration in one place!)
+	extendType := os.Getenv("EXTEND_TYPE") == "true"
 
-	// Enable federation
-	config.EnableFederation = true
-
-	// Group all queries under "leads" namespace
-	// This creates: query { leads { leadsOverview { ... } } }
-	config.QueryNamespace = "leads"
-
-	// Add your precompiled queries
-	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
-		Index:        leadsIndex,
-		Description:  "Leads overview with statistics",
-		QueryBuilder: buildLeadsOverviewQuery,
-	})
-
-	config.AddPrecompiledQuery("leadsOverviewByMarket", &revealdgraphql.PrecompiledQueryConfig{
-		Index:        leadsIndex,
-		Description:  "Leads overview with market filtering",
-		QueryBuilder: buildLeadsOverviewQuery,
-		Parameters: graphql.FieldConfigArgument{
-			"markets": &graphql.ArgumentConfig{
-				Type:        graphql.NewList(graphql.String),
-				Description: "Filter by market codes",
+	config := revealdgraphql.NewConfig(
+		revealdgraphql.WithEnableFederation(),
+		revealdgraphql.WithQueryNamespace("Leads", extendType),
+		revealdgraphql.WithPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
+			Index:        leadsIndex,
+			Description:  "Leads overview with statistics",
+			QueryBuilder: buildLeadsOverviewQuery,
+		}),
+		revealdgraphql.WithPrecompiledQuery("leadsOverviewByMarket", &revealdgraphql.PrecompiledQueryConfig{
+			Index:        leadsIndex,
+			Description:  "Leads overview with market filtering",
+			QueryBuilder: buildLeadsOverviewQuery,
+			Parameters: graphql.FieldConfigArgument{
+				"markets": &graphql.ArgumentConfig{
+					Type:        graphql.NewList(graphql.String),
+					Description: "Filter by market codes",
+				},
 			},
-		},
-	})
+		}),
+	)
 
 	// Generate schema SDL without ES connection!
 	sdl, err := revealdgraphql.GenerateSchemaSDL(mapping, config)

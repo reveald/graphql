@@ -27,9 +27,9 @@ func main() {
 	mapping := &revealdgraphql.IndexMapping{
 		IndexName: "leads",
 		Properties: map[string]*revealdgraphql.Field{
-			"id":              {Name: "id", Type: revealdgraphql.FieldTypeKeyword},
-			"leadType":        {Name: "leadType", Type: revealdgraphql.FieldTypeKeyword},
-			"createdAt":       {Name: "createdAt", Type: revealdgraphql.FieldTypeDate},
+			"id":               {Name: "id", Type: revealdgraphql.FieldTypeKeyword},
+			"leadType":         {Name: "leadType", Type: revealdgraphql.FieldTypeKeyword},
+			"createdAt":        {Name: "createdAt", Type: revealdgraphql.FieldTypeDate},
 			"branchMarketCode": {Name: "branchMarketCode", Type: revealdgraphql.FieldTypeKeyword},
 		},
 	}
@@ -39,8 +39,7 @@ func main() {
 
 	// Add a precompiled query with complex aggregations
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
-		Index:       "leads",
-		Description: "Leads overview with statistics by type and mechanism",
+		Description:  "Leads overview with statistics by type and mechanism",
 		QueryBuilder: buildLeadsOverviewQuery,
 		Parameters: graphql.FieldConfigArgument{
 			"market": &graphql.ArgumentConfig{
@@ -105,8 +104,7 @@ query {
       }
     }
   }
-}
-`)
+}`)
 
 	if err := http.ListenAndServe(":8080", api); err != nil {
 		log.Fatalf("Server failed: %v", err)

@@ -434,7 +434,6 @@ func TestGraphQL_FlexibleSearch(t *testing.T) {
 	// Create config with flexible querying
 	config := NewConfig()
 	config.AddQuery("flexibleSearch", &QueryConfig{
-		Index:                 indexName,
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
 		EnablePagination:      true,

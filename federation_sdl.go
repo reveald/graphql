@@ -10,7 +10,8 @@ import (
 
 // ExportFederationSDL exports the GraphQL schema as SDL (Schema Definition Language)
 // with Apollo Federation v2 annotations
-func ExportFederationSDL(schema graphql.Schema, enableFederation bool) string {
+func ExportFederationSDL(schema graphql.Schema, config *Config) string {
+	enableFederation := config.EnableFederation
 	var sdl strings.Builder
 
 	// Add federation schema extension if enabled
@@ -39,6 +40,12 @@ func ExportFederationSDL(schema graphql.Schema, enableFederation bool) string {
 	}
 	sort.Strings(typeNames)
 
+	// Determine which type should be extended (if any)
+	namespaceTypeName := ""
+	if config.QueryNamespace != "" {
+		namespaceTypeName = capitalize(config.QueryNamespace)
+	}
+
 	for _, typeName := range typeNames {
 		gqlType := typeMap[typeName]
 
@@ -49,7 +56,10 @@ func ExportFederationSDL(schema graphql.Schema, enableFederation bool) string {
 				continue
 			}
 
-			sdl.WriteString(exportObjectType(t, enableFederation))
+			// Check if this is the namespace type and should be extended
+			isExtended := enableFederation && config.ExtendQueryNamespace && typeName == namespaceTypeName
+
+			sdl.WriteString(exportObjectType(t, enableFederation, isExtended))
 			sdl.WriteString("\n")
 
 		case *graphql.Enum:
@@ -64,7 +74,7 @@ func ExportFederationSDL(schema graphql.Schema, enableFederation bool) string {
 
 	// Export Query type last
 	if queryType := schema.QueryType(); queryType != nil {
-		sdl.WriteString(exportObjectType(queryType, false)) // Query is never shareable
+		sdl.WriteString(exportObjectType(queryType, false, false)) // Query is never shareable or extended
 		sdl.WriteString("\n")
 	}
 
@@ -72,7 +82,7 @@ func ExportFederationSDL(schema graphql.Schema, enableFederation bool) string {
 }
 
 // exportObjectType exports a GraphQL object type as SDL
-func exportObjectType(objType *graphql.Object, enableFederation bool) string {
+func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool) string {
 	var sdl strings.Builder
 
 	// Add description if present
@@ -81,15 +91,29 @@ func exportObjectType(objType *graphql.Object, enableFederation bool) string {
 `, objType.Description()))
 	}
 
-	// Type declaration with @shareable if applicable
+	// Type declaration with @shareable if applicable and extend if specified
 	typeName := objType.Name()
 	isShareable := enableFederation && IsShareableType(typeName)
 
-	if isShareable {
-		sdl.WriteString(fmt.Sprintf("type %s @shareable {\n", typeName))
+	// Build type declaration
+	var typeDecl string
+	if isExtended {
+		// Use "extend type" for types defined in other subgraphs
+		if isShareable {
+			typeDecl = fmt.Sprintf("extend type %s @shareable {\n", typeName)
+		} else {
+			typeDecl = fmt.Sprintf("extend type %s {\n", typeName)
+		}
 	} else {
-		sdl.WriteString(fmt.Sprintf("type %s {\n", typeName))
+		// Use "type" for types owned by this subgraph
+		if isShareable {
+			typeDecl = fmt.Sprintf("type %s @shareable {\n", typeName)
+		} else {
+			typeDecl = fmt.Sprintf("type %s {\n", typeName)
+		}
 	}
+
+	sdl.WriteString(typeDecl)
 
 	// Export fields
 	fields := objType.Fields()

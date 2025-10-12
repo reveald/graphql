@@ -33,7 +33,7 @@ func NewResolverBuilder(backend reveald.Backend, mapping *IndexMapping, esClient
 // BuildResolver creates a resolver function for a query
 func (rb *ResolverBuilder) BuildResolver(queryName string, config *QueryConfig) graphql.FieldResolveFn {
 	// Create the endpoint with configured indices and features
-	endpoint := reveald.NewEndpoint(rb.backend, reveald.WithIndices(config.GetIndices()...))
+	endpoint := reveald.NewEndpoint(rb.backend, reveald.WithIndices(rb.reader.mapping.IndexName))
 
 	if err := endpoint.Register(config.Features...); err != nil {
 		panic(fmt.Sprintf("failed to register features for query %s: %v", queryName, err))
@@ -134,7 +134,7 @@ func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, con
 	result, err := executeTypedQuery(
 		context.Background(),
 		rb.esClient,
-		config.GetIndices(),
+		[]string{rb.reader.mapping.IndexName},
 		finalQuery,
 		aggs,
 		limit,
@@ -200,7 +200,7 @@ func (rb *ResolverBuilder) BuildPrecompiledResolver(queryName string, config *Pr
 
 		// Build ES search
 		searchBuilder := rb.esClient.Search()
-		for _, idx := range config.GetIndices() {
+		for _, idx := range []string{rb.reader.mapping.IndexName} {
 			searchBuilder = searchBuilder.Index(idx)
 		}
 

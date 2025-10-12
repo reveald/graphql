@@ -19,14 +19,26 @@ type Config struct {
 	// When enabled:
 	// - Adds @shareable, @link, and @key directives to schema
 	// - Marks common types (Bucket, Pagination, StatsValues, etc.) as @shareable
-	// - Exposes SDL endpoint at /_federation/sdl
 	// Default: false
 	EnableFederation bool
 
-	// QueryNamespace groups all queries under a namespace field
-	// Example: "leads" → query { leads { leadsOverview { ... } } }
+	// QueryNamespace groups all queries under a namespace type
+	// The value becomes the GraphQL type name (capitalized if needed)
+	// and the field name (lowercased first letter)
+	//
+	// Examples:
+	//   "Leads" → type Leads, query { leads { ... } }
+	//   "CrossDomainSearchLeads" → type CrossDomainSearchLeads, query { crossDomainSearchLeads { ... } }
+	//
 	// If empty, queries are at root level (default)
 	QueryNamespace string
+
+	// ExtendQueryNamespace controls whether the namespace type is extended or defined
+	// When true: generates "extend type Leads { ... }" (type defined in another subgraph)
+	// When false: generates "type Leads { ... }" (this subgraph owns the type)
+	// Only relevant when QueryNamespace is set and EnableFederation is true
+	// Default: false
+	ExtendQueryNamespace bool
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request
@@ -41,12 +53,6 @@ type RequestInterceptor func(httpReq *http.Request, revealdReq *reveald.Request)
 
 // QueryConfig defines configuration for a single GraphQL query
 type QueryConfig struct {
-	// Index is the Elasticsearch index to query
-	Index string
-
-	// Indices are multiple Elasticsearch indices to query
-	Indices []string
-
 	// Features are the reveald features to apply to this query
 	Features []reveald.Feature
 
@@ -96,23 +102,61 @@ type FieldFilter struct {
 	Exclude []string
 }
 
-// GetIndices returns all indices configured for this query
-func (qc *QueryConfig) GetIndices() []string {
-	if len(qc.Indices) > 0 {
-		return qc.Indices
+// ConfigOption is a functional option for configuring the GraphQL API
+type ConfigOption func(*Config)
+
+// WithEnableFederation enables Apollo Federation v2 support
+func WithEnableFederation() ConfigOption {
+	return func(c *Config) {
+		c.EnableFederation = true
 	}
-	if qc.Index != "" {
-		return []string{qc.Index}
-	}
-	return []string{}
 }
 
-// NewConfig creates a new GraphQL API configuration
-func NewConfig() *Config {
-	return &Config{
+// WithQueryNamespace sets the query namespace and optionally extends it
+// Examples:
+//
+//	WithQueryNamespace("Leads", false) → type Leads { ... }, query { leads { ... } }
+//	WithQueryNamespace("Leads", true) → extend type Leads { ... }, query { leads { ... } }
+func WithQueryNamespace(namespace string, extend bool) ConfigOption {
+	return func(c *Config) {
+		c.QueryNamespace = namespace
+		c.ExtendQueryNamespace = extend
+	}
+}
+
+// WithQuery adds a reveald feature-based query
+func WithQuery(name string, queryConfig *QueryConfig) ConfigOption {
+	return func(c *Config) {
+		if c.Queries == nil {
+			c.Queries = make(map[string]*QueryConfig)
+		}
+		c.Queries[name] = queryConfig
+	}
+}
+
+// WithPrecompiledQuery adds a precompiled query
+func WithPrecompiledQuery(name string, queryConfig *PrecompiledQueryConfig) ConfigOption {
+	return func(c *Config) {
+		if c.PrecompiledQueries == nil {
+			c.PrecompiledQueries = make(map[string]*PrecompiledQueryConfig)
+		}
+		c.PrecompiledQueries[name] = queryConfig
+	}
+}
+
+// NewConfig creates a new GraphQL API configuration with optional functional options
+func NewConfig(opts ...ConfigOption) *Config {
+	config := &Config{
 		Queries:            make(map[string]*QueryConfig),
 		PrecompiledQueries: make(map[string]*PrecompiledQueryConfig),
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	return config
 }
 
 // AddQuery adds a query configuration to the config
