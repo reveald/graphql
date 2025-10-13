@@ -150,6 +150,11 @@ func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, con
 
 // convertResult converts a reveald Result to a GraphQL response
 func (rb *ResolverBuilder) convertResult(result *reveald.Result, config *QueryConfig) map[string]any {
+	// Normalize hits to ensure object fields with properties are arrays
+	for _, hit := range result.Hits {
+		normalizeObjectsToArrays(hit, rb.reader.mapping)
+	}
+
 	response := map[string]any{
 		"hits":       result.Hits,
 		"totalCount": result.TotalHitCount,
@@ -234,6 +239,8 @@ func (rb *ResolverBuilder) convertPrecompiledESResponseTyped(resp *search.Respon
 		if hit.Source_ != nil {
 			var source map[string]any
 			if err := json.Unmarshal(hit.Source_, &source); err == nil {
+				// Normalize object fields to arrays for GraphQL schema compatibility
+				normalizeObjectsToArrays(source, rb.reader.mapping)
 				for k, v := range source {
 					doc[k] = v
 				}
@@ -525,4 +532,70 @@ func convertBucketsWithPath(buckets []*reveald.ResultBucket, parentPath string) 
 	}
 
 	return bucketsResponse
+}
+
+// normalizeObjectsToArrays converts object fields with properties to arrays
+// to match the GraphQL schema expectation. This handles cases where ES returns
+// a single object but the schema expects an array.
+func normalizeObjectsToArrays(doc map[string]any, mapping *IndexMapping) {
+	for fieldName, value := range doc {
+		if value == nil {
+			continue
+		}
+
+		// Check if this field is an object with properties in the mapping
+		field := mapping.GetField(fieldName)
+		if field == nil {
+			continue
+		}
+
+		// Only normalize object/nested types that have properties
+		if (field.Type == FieldTypeObject || field.Type == FieldTypeNested) && len(field.Properties) > 0 {
+			// Check if value is already an array
+			if _, isArray := value.([]any); isArray {
+				// Already an array, just recurse into each element
+				for _, item := range value.([]any) {
+					if itemMap, ok := item.(map[string]any); ok {
+						normalizeNestedObject(itemMap, field)
+					}
+				}
+			} else if objMap, isMap := value.(map[string]any); isMap {
+				// Single object - recurse first, then wrap in array
+				normalizeNestedObject(objMap, field)
+				doc[fieldName] = []any{objMap}
+			}
+		}
+	}
+}
+
+// normalizeNestedObject recursively normalizes nested objects
+func normalizeNestedObject(obj map[string]any, field *Field) {
+	for propName, value := range obj {
+		if value == nil {
+			continue
+		}
+
+		// Check if this property exists in the field definition
+		propField, exists := field.Properties[propName]
+		if !exists {
+			continue
+		}
+
+		// Only normalize object/nested types that have properties
+		if (propField.Type == FieldTypeObject || propField.Type == FieldTypeNested) && len(propField.Properties) > 0 {
+			// Check if value is already an array
+			if _, isArray := value.([]any); isArray {
+				// Already an array, recurse into each element
+				for _, item := range value.([]any) {
+					if itemMap, ok := item.(map[string]any); ok {
+						normalizeNestedObject(itemMap, propField)
+					}
+				}
+			} else if objMap, isMap := value.(map[string]any); isMap {
+				// Single object - recurse first, then wrap in array
+				normalizeNestedObject(objMap, propField)
+				obj[propName] = []any{objMap}
+			}
+		}
+	}
 }

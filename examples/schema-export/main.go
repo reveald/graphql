@@ -50,9 +50,10 @@ func main() {
 		revealdgraphql.WithEnableFederation(),
 		revealdgraphql.WithQueryNamespace("Leads", extendType),
 		revealdgraphql.WithPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
-			Index:        leadsIndex,
-			Description:  "Leads overview with statistics",
-			QueryBuilder: buildLeadsOverviewQuery,
+			Index:           leadsIndex,
+			Description:     "Leads overview with statistics",
+			QueryBuilder:    buildLeadsOverviewQuery,
+			EntityKeyFields: []string{"id", "conversationId"}, // Multiple @key directives for entity resolution
 		}),
 		revealdgraphql.WithPrecompiledQuery("leadsOverviewByMarket", &revealdgraphql.PrecompiledQueryConfig{
 			Index:        leadsIndex,

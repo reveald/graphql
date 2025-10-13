@@ -82,6 +82,14 @@ type PrecompiledQueryConfig struct {
 	// The root query is merged with the main query
 	// Useful for tenant filtering, permissions, etc.
 	RootQueryBuilder RootQueryBuilder
+
+	// EntityKeyFields specifies the fields to use as entity keys for Apollo Federation
+	// Overrides the IndexMapping.EntityKeyFields for this specific query
+	// Each element represents one @key directive with space-separated field names
+	// Examples:
+	//   []string{"id"} → @key(fields: "id")
+	//   []string{"leadId", "conversationId"} → @key(fields: "leadId") @key(fields: "conversationId")
+	EntityKeyFields []string
 }
 
 // GetIndices returns all indices configured for this query

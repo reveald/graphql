@@ -17,6 +17,7 @@ type SchemaGenerator struct {
 	resolverBuilder *ResolverBuilder
 	bucketType      *graphql.Object
 	paginationType  *graphql.Object
+	entityKeys      map[string][]string // Maps type name to entity key fields (e.g., "LeadDocument" -> []string{"id"})
 }
 
 // NewSchemaGenerator creates a new schema generator
@@ -26,6 +27,7 @@ func NewSchemaGenerator(mapping *IndexMapping, config *Config, resolverBuilder *
 		config:          config,
 		typeCache:       make(map[string]*graphql.Object),
 		resolverBuilder: resolverBuilder,
+		entityKeys:      make(map[string][]string),
 	}
 
 	// Initialize shared types
@@ -208,6 +210,11 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 		Fields: fields,
 	})
 
+	// Register entity key fields if configured at query level
+	if len(queryConfig.EntityKeyFields) > 0 {
+		sg.entityKeys[typeName] = queryConfig.EntityKeyFields
+	}
+
 	sg.typeCache[typeName] = docType
 	return docType, nil
 }
@@ -255,10 +262,8 @@ func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) 
 
 		// Check if we already created this type
 		if cachedType, ok := sg.typeCache[typeName]; ok {
-			if field.Type == FieldTypeNested {
-				return graphql.NewList(cachedType), nil
-			}
-			return cachedType, nil
+			// Always return as list for objects with properties
+			return graphql.NewList(cachedType), nil
 		}
 
 		objFields := graphql.Fields{}
@@ -282,10 +287,8 @@ func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) 
 
 		sg.typeCache[typeName] = objType
 
-		if field.Type == FieldTypeNested {
-			return graphql.NewList(objType), nil
-		}
-		return objType, nil
+		// Always return as list for objects with properties
+		return graphql.NewList(objType), nil
 	default:
 		return graphql.String, nil // Default to string
 	}

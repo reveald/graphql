@@ -73,6 +73,11 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 			},
 		})
 		sg.typeCache[docTypeName] = docType
+
+		// Register entity key fields if configured at query level
+		if len(queryConfig.EntityKeyFields) > 0 {
+			sg.entityKeys[docTypeName] = queryConfig.EntityKeyFields
+		}
 	}
 
 	fields := graphql.Fields{

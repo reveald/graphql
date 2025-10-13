@@ -10,7 +10,7 @@ import (
 
 // ExportFederationSDL exports the GraphQL schema as SDL (Schema Definition Language)
 // with Apollo Federation v2 annotations
-func ExportFederationSDL(schema graphql.Schema, config *Config) string {
+func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[string][]string) string {
 	enableFederation := config.EnableFederation
 	var sdl strings.Builder
 
@@ -59,7 +59,10 @@ func ExportFederationSDL(schema graphql.Schema, config *Config) string {
 			// Check if this is the namespace type and should be extended
 			isExtended := enableFederation && config.ExtendQueryNamespace && typeName == namespaceTypeName
 
-			sdl.WriteString(exportObjectType(t, enableFederation, isExtended))
+			// Get entity key fields for this type (if any)
+			keyFieldsList := entityKeys[typeName]
+
+			sdl.WriteString(exportObjectType(t, enableFederation, isExtended, keyFieldsList))
 			sdl.WriteString("\n")
 
 		case *graphql.Enum:
@@ -74,7 +77,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config) string {
 
 	// Export Query type last
 	if queryType := schema.QueryType(); queryType != nil {
-		sdl.WriteString(exportObjectType(queryType, false, false)) // Query is never shareable or extended
+		sdl.WriteString(exportObjectType(queryType, false, false, nil)) // Query is never shareable, extended, or has entity keys
 		sdl.WriteString("\n")
 	}
 
@@ -82,7 +85,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config) string {
 }
 
 // exportObjectType exports a GraphQL object type as SDL
-func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool) string {
+func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool, entityKeyFields []string) string {
 	var sdl strings.Builder
 
 	// Add description if present (using # comment syntax for types)
@@ -90,26 +93,44 @@ func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended
 		sdl.WriteString(fmt.Sprintf("# %s\n", objType.Description()))
 	}
 
-	// Type declaration with @shareable if applicable and extend if specified
+	// Type declaration with directives (@key, @shareable) if applicable
 	typeName := objType.Name()
 	isShareable := enableFederation && IsShareableType(typeName)
+	hasEntityKeys := enableFederation && len(entityKeyFields) > 0
 
-	// Build type declaration
+	// Build type declaration with directives
 	var typeDecl string
+	var directives string
+
+	// Add @key directives (one for each key specification)
+	if hasEntityKeys {
+		for _, keyField := range entityKeyFields {
+			if directives != "" {
+				directives += " "
+			}
+			directives += fmt.Sprintf("@key(fields: \"%s\")", keyField)
+		}
+	}
+
+	// Add @shareable directive if applicable
+	if isShareable {
+		if directives != "" {
+			directives += " "
+		}
+		directives += "@shareable"
+	}
+
+	// Add space before opening brace if we have directives
+	if directives != "" {
+		directives = " " + directives
+	}
+
 	if isExtended {
 		// Use "extend type" for types defined in other subgraphs
-		if isShareable {
-			typeDecl = fmt.Sprintf("extend type %s @shareable {\n", typeName)
-		} else {
-			typeDecl = fmt.Sprintf("extend type %s {\n", typeName)
-		}
+		typeDecl = fmt.Sprintf("extend type %s%s {\n", typeName, directives)
 	} else {
 		// Use "type" for types owned by this subgraph
-		if isShareable {
-			typeDecl = fmt.Sprintf("type %s @shareable {\n", typeName)
-		} else {
-			typeDecl = fmt.Sprintf("type %s {\n", typeName)
-		}
+		typeDecl = fmt.Sprintf("type %s%s {\n", typeName, directives)
 	}
 
 	sdl.WriteString(typeDecl)

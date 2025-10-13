@@ -66,9 +66,10 @@ func main() {
 
 	// Add PRECOMPILED QUERY with simple QueryBuilder (no parameters)
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
-		Index:        leadsIndex,
-		Description:  "Leads overview with statistics by type and mechanism",
-		QueryBuilder: func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
+		Index:           leadsIndex,
+		Description:     "Leads overview with statistics by type and mechanism",
+		QueryBuilder:    func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
+		EntityKeyFields: []string{"id", "conversationId"}, // Multiple @key directives for federation
 	})
 
 	// Add PRECOMPILED QUERY with QueryBuilder (supports market filtering)

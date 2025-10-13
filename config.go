@@ -94,6 +94,14 @@ type QueryConfig struct {
 	// RequestInterceptor modifies the reveald Request based on the HTTP request
 	// Used for feature-based queries to inject dynamic parameters
 	RequestInterceptor RequestInterceptor
+
+	// EntityKeyFields specifies the fields to use as entity keys for Apollo Federation
+	// Overrides the IndexMapping.EntityKeyFields for this specific query
+	// Each element represents one @key directive with space-separated field names
+	// Examples:
+	//   []string{"id"} → @key(fields: "id")
+	//   []string{"id", "email"} → @key(fields: "id") @key(fields: "email")
+	EntityKeyFields []string
 }
 
 // FieldFilter defines which fields to include or exclude
