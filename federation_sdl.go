@@ -85,10 +85,9 @@ func ExportFederationSDL(schema graphql.Schema, config *Config) string {
 func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool) string {
 	var sdl strings.Builder
 
-	// Add description if present
+	// Add description if present (using # comment syntax for types)
 	if objType.Description() != "" {
-		sdl.WriteString(fmt.Sprintf(`"""%s"""
-`, objType.Description()))
+		sdl.WriteString(fmt.Sprintf("# %s\n", objType.Description()))
 	}
 
 	// Type declaration with @shareable if applicable and extend if specified
@@ -147,8 +146,7 @@ func exportEnumType(enumType *graphql.Enum) string {
 	var sdl strings.Builder
 
 	if enumType.Description() != "" {
-		sdl.WriteString(fmt.Sprintf(`"""%s"""
-`, enumType.Description()))
+		sdl.WriteString(fmt.Sprintf("# %s\n", enumType.Description()))
 	}
 
 	sdl.WriteString(fmt.Sprintf("enum %s {\n", enumType.Name()))
@@ -169,8 +167,7 @@ func exportInputObjectType(inputType *graphql.InputObject) string {
 	var sdl strings.Builder
 
 	if inputType.Description() != "" {
-		sdl.WriteString(fmt.Sprintf(`"""%s"""
-`, inputType.Description()))
+		sdl.WriteString(fmt.Sprintf("# %s\n", inputType.Description()))
 	}
 
 	sdl.WriteString(fmt.Sprintf("input %s {\n", inputType.Name()))
