@@ -1,11 +1,10 @@
-module github.com/reveald/graphql
+module github.com/wayke-se/reveald-graphql
 
 go 1.25.1
 
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.19.0
 	github.com/graphql-go/graphql v0.8.1
-	github.com/joho/godotenv v1.5.1
 	github.com/reveald/reveald v1.0.0
 	github.com/testcontainers/testcontainers-go v0.39.0
 )

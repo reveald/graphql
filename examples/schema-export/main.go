@@ -9,7 +9,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/calendarinterval"
 	"github.com/graphql-go/graphql"
-	revealdgraphql "github.com/reveald/graphql"
+	revealdgraphql "github.com/wayke-se/reveald-graphql"
 )
 
 // Schema Export Tool

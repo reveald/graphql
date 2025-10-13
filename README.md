@@ -30,7 +30,7 @@ The library does not work without an active Elasticsearch cluster and reveald ba
 ## Installation
 
 ```bash
-go get github.com/reveald/graphql
+go get github.com/wayke-se/reveald-graphql
 ```
 
 ## Quick Start
@@ -71,7 +71,7 @@ import (
     "net/http"
     "os"
 
-    revealdgraphql "github.com/reveald/graphql"
+    revealdgraphql "github.com/wayke-se/reveald-graphql"
     "github.com/reveald/reveald"
     "github.com/reveald/reveald/featureset"
 )
