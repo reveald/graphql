@@ -46,6 +46,7 @@ func main() {
 	extendType := os.Getenv("EXTEND_TYPE") == "true"
 
 	config := revealdgraphql.NewConfig(
+		mapping,
 		revealdgraphql.WithEnableFederation(),
 		revealdgraphql.WithQueryNamespace("Leads", extendType),
 		revealdgraphql.WithPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
@@ -67,7 +68,7 @@ func main() {
 	)
 
 	// Generate schema SDL without ES connection!
-	sdl, err := revealdgraphql.GenerateSchemaSDL(mapping, config)
+	sdl, err := revealdgraphql.GenerateSchemaSDL(config)
 	if err != nil {
 		log.Fatalf("Failed to generate schema: %v", err)
 	}

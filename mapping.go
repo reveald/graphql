@@ -9,18 +9,18 @@ import (
 type FieldType string
 
 const (
-	FieldTypeText     FieldType = "text"
-	FieldTypeKeyword  FieldType = "keyword"
-	FieldTypeLong     FieldType = "long"
-	FieldTypeInteger  FieldType = "integer"
-	FieldTypeShort    FieldType = "short"
-	FieldTypeByte     FieldType = "byte"
-	FieldTypeDouble   FieldType = "double"
-	FieldTypeFloat    FieldType = "float"
-	FieldTypeBoolean  FieldType = "boolean"
-	FieldTypeDate     FieldType = "date"
-	FieldTypeObject   FieldType = "object"
-	FieldTypeNested   FieldType = "nested"
+	FieldTypeText    FieldType = "text"
+	FieldTypeKeyword FieldType = "keyword"
+	FieldTypeLong    FieldType = "long"
+	FieldTypeInteger FieldType = "integer"
+	FieldTypeShort   FieldType = "short"
+	FieldTypeByte    FieldType = "byte"
+	FieldTypeDouble  FieldType = "double"
+	FieldTypeFloat   FieldType = "float"
+	FieldTypeBoolean FieldType = "boolean"
+	FieldTypeDate    FieldType = "date"
+	FieldTypeObject  FieldType = "object"
+	FieldTypeNested  FieldType = "nested"
 )
 
 // Field represents a field in an Elasticsearch mapping
@@ -38,10 +38,10 @@ type IndexMapping struct {
 }
 
 // ParseMapping parses an Elasticsearch mapping JSON into an IndexMapping
-func ParseMapping(indexName string, mappingJSON []byte) (*IndexMapping, error) {
+func ParseMapping(indexName string, mappingJSON []byte) (IndexMapping, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(mappingJSON, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse mapping JSON: %w", err)
+		return IndexMapping{}, fmt.Errorf("failed to parse mapping JSON: %w", err)
 	}
 
 	// Extract properties from the mapping structure
@@ -52,19 +52,19 @@ func ParseMapping(indexName string, mappingJSON []byte) (*IndexMapping, error) {
 
 	properties, err := extractProperties(raw)
 	if err != nil {
-		return nil, err
+		return IndexMapping{}, err
 	}
 
 	fields := make(map[string]*Field)
 	for name, prop := range properties {
 		field, err := parseField(name, prop)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse field %s: %w", name, err)
+			return IndexMapping{}, fmt.Errorf("failed to parse field %s: %w", name, err)
 		}
 		fields[name] = field
 	}
 
-	return &IndexMapping{
+	return IndexMapping{
 		IndexName:  indexName,
 		Properties: fields,
 	}, nil
@@ -145,7 +145,7 @@ func parseField(name string, raw any) (*Field, error) {
 }
 
 // GetField retrieves a field by path (e.g., "user.name" or "tags.keyword")
-func (m *IndexMapping) GetField(path string) *Field {
+func (m IndexMapping) GetField(path string) *Field {
 	return getFieldByPath(m.Properties, path)
 }
 

@@ -432,7 +432,7 @@ func TestGraphQL_FlexibleSearch(t *testing.T) {
 	}
 
 	// Create config with flexible querying
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("flexibleSearch", &QueryConfig{
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
@@ -440,7 +440,7 @@ func TestGraphQL_FlexibleSearch(t *testing.T) {
 	})
 
 	// Create API
-	_, err = New(esBackend, mapping, config, WithESClient(esClient))
+	_, err = New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}

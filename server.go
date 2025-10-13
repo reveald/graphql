@@ -29,7 +29,7 @@ type GraphQLAPI struct {
 type Option func(*GraphQLAPI)
 
 // New creates a new GraphQL API
-func New(backend reveald.Backend, mapping *IndexMapping, config *Config, opts ...Option) (*GraphQLAPI, error) {
+func New(backend reveald.Backend, config *Config, opts ...Option) (*GraphQLAPI, error) {
 	api := &GraphQLAPI{
 		backend: backend,
 		config:  config,
@@ -40,10 +40,10 @@ func New(backend reveald.Backend, mapping *IndexMapping, config *Config, opts ..
 	}
 
 	// Build the resolver
-	resolverBuilder := NewResolverBuilder(backend, mapping, api.esClient)
+	resolverBuilder := NewResolverBuilder(backend, &config.Mapping, api.esClient)
 
 	// Generate the schema
-	generator := NewSchemaGenerator(mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
 	schema, err := generator.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate schema: %w", err)
@@ -76,9 +76,9 @@ func (api *GraphQLAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request
 	var req struct {
-		Query         string                 `json:"query"`
-		Variables     map[string]any         `json:"variables"`
-		OperationName string                 `json:"operationName"`
+		Query         string         `json:"query"`
+		Variables     map[string]any `json:"variables"`
+		OperationName string         `json:"operationName"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

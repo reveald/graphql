@@ -36,6 +36,7 @@ func main() {
 
 	// Configure the GraphQL API with functional options
 	config := revealdgraphql.NewConfig(
+		mapping,
 		revealdgraphql.WithEnableFederation(),
 		// Optional: revealdgraphql.WithQueryNamespace("Products", false),
 	)
@@ -154,7 +155,7 @@ func main() {
 	}
 
 	// Create the GraphQL API with ES client option
-	api, err := revealdgraphql.New(backend, mapping, config, revealdgraphql.WithESClient(esClient))
+	api, err := revealdgraphql.New(backend, config, revealdgraphql.WithESClient(esClient))
 	if err != nil {
 		log.Fatalf("Failed to create GraphQL API: %v", err)
 	}

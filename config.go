@@ -39,6 +39,9 @@ type Config struct {
 	// Only relevant when QueryNamespace is set and EnableFederation is true
 	// Default: false
 	ExtendQueryNamespace bool
+
+	// Mapping is the mapping to use for the GraphQL API
+	Mapping IndexMapping
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request
@@ -145,10 +148,11 @@ func WithPrecompiledQuery(name string, queryConfig *PrecompiledQueryConfig) Conf
 }
 
 // NewConfig creates a new GraphQL API configuration with optional functional options
-func NewConfig(opts ...ConfigOption) *Config {
+func NewConfig(mapping IndexMapping, opts ...ConfigOption) *Config {
 	config := &Config{
 		Queries:            make(map[string]*QueryConfig),
 		PrecompiledQueries: make(map[string]*PrecompiledQueryConfig),
+		Mapping:            mapping,
 	}
 
 	// Apply options

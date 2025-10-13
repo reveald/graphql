@@ -39,7 +39,7 @@ func TestIntegration_FeatureBasedQuery(t *testing.T) {
 	}
 
 	// Create config with Feature-based query
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("searchProducts", &QueryConfig{
 		Description: "Search with reveald Features",
 		Features: []reveald.Feature{
@@ -57,7 +57,7 @@ func TestIntegration_FeatureBasedQuery(t *testing.T) {
 	})
 
 	// Create API
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestIntegration_MixedQueryTypes(t *testing.T) {
 	}
 
 	// Create config with BOTH Feature-based and typed ES queries
-	config := NewConfig()
+	config := NewConfig(mapping)
 
 	// Feature-based query
 	config.AddQuery("featureSearch", &QueryConfig{
@@ -174,7 +174,7 @@ func TestIntegration_MixedQueryTypes(t *testing.T) {
 	})
 
 	// Create API
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -238,13 +238,13 @@ func TestIntegration_TypedQueryWithAggregations(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("search", &QueryConfig{
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
 	})
 
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestIntegration_ResultFormatConsistency(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig()
+	config := NewConfig(mapping)
 
 	// Feature-based query
 	config.AddQuery("featureSearch", &QueryConfig{
@@ -417,7 +417,7 @@ func TestIntegration_ResultFormatConsistency(t *testing.T) {
 		EnablePagination:      true,
 	})
 
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -480,7 +480,7 @@ func TestIntegration_RootQueryEnforcement(t *testing.T) {
 	}
 
 	// Create config with RootQuery that enforces active=true
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("search", &QueryConfig{
 		EnableElasticQuerying: true,
 		RootQuery: &types.Query{
@@ -490,7 +490,7 @@ func TestIntegration_RootQueryEnforcement(t *testing.T) {
 		},
 	})
 
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -542,12 +542,12 @@ func TestIntegration_ComplexNestedQuery(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("search", &QueryConfig{
 		EnableElasticQuerying: true,
 	})
 
-	api, err := New(esBackend, mapping, config, WithESClient(esClient))
+	api, err := New(esBackend, config, WithESClient(esClient))
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}
@@ -758,7 +758,7 @@ func TestIntegration_BackwardCompatibility(t *testing.T) {
 	}
 
 	// Create API WITHOUT ES client (old behavior)
-	config := NewConfig()
+	config := NewConfig(mapping)
 	config.AddQuery("search", &QueryConfig{
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(),
@@ -766,7 +766,7 @@ func TestIntegration_BackwardCompatibility(t *testing.T) {
 		EnablePagination: true,
 	})
 
-	api, err := New(esBackend, mapping, config) // No WithESClient option
+	api, err := New(esBackend, config) // No WithESClient option
 	if err != nil {
 		t.Fatalf("failed to create API: %v", err)
 	}

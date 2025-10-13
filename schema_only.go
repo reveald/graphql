@@ -31,16 +31,16 @@ import (
 //	    log.Fatal(err)
 //	}
 //	fmt.Println(sdl)
-func GenerateSchemaSDL(mapping *IndexMapping, config *Config) (string, error) {
+func GenerateSchemaSDL(config *Config) (string, error) {
 	// Create a nil resolver builder (we won't execute queries, just generate schema)
 	resolverBuilder := &ResolverBuilder{
 		backend:  nil, // Not needed for schema generation
 		esClient: nil, // Not needed for schema generation
-		reader:   NewArgumentReader(mapping),
+		reader:   NewArgumentReader(&config.Mapping),
 	}
 
 	// Generate the schema
-	generator := NewSchemaGenerator(mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
 	schema, err := generator.Generate()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate schema: %w", err)
@@ -57,15 +57,15 @@ func GenerateSchemaSDL(mapping *IndexMapping, config *Config) (string, error) {
 //
 // Note: The returned schema has nil resolvers and cannot execute queries.
 // Use New() if you need a fully functional API.
-func GenerateSchema(mapping *IndexMapping, config *Config) (graphql.Schema, error) {
+func GenerateSchema(config *Config) (graphql.Schema, error) {
 	// Create a nil resolver builder
 	resolverBuilder := &ResolverBuilder{
 		backend:  nil,
 		esClient: nil,
-		reader:   NewArgumentReader(mapping),
+		reader:   NewArgumentReader(&config.Mapping),
 	}
 
 	// Generate the schema
-	generator := NewSchemaGenerator(mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
 	return generator.Generate()
 }

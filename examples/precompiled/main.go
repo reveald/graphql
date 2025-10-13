@@ -24,7 +24,7 @@ func main() {
 
 	// Load the Elasticsearch mapping (for leads index)
 	// In a real application, you would load this from a file
-	mapping := &revealdgraphql.IndexMapping{
+	mapping := revealdgraphql.IndexMapping{
 		IndexName: "leads",
 		Properties: map[string]*revealdgraphql.Field{
 			"id":               {Name: "id", Type: revealdgraphql.FieldTypeKeyword},
@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Configure the GraphQL API
-	config := revealdgraphql.NewConfig()
+	config := revealdgraphql.NewConfig(mapping)
 
 	// Add a precompiled query with complex aggregations
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
@@ -61,7 +61,7 @@ func main() {
 	}
 
 	// Create the GraphQL API with ES client option
-	api, err := revealdgraphql.New(backend, mapping, config, revealdgraphql.WithESClient(esClient))
+	api, err := revealdgraphql.New(backend, config, revealdgraphql.WithESClient(esClient))
 	if err != nil {
 		log.Fatalf("Failed to create GraphQL API: %v", err)
 	}

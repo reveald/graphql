@@ -59,6 +59,7 @@ func main() {
 
 	// Configure the GraphQL API
 	config := revealdgraphql.NewConfig(
+		mapping,
 		revealdgraphql.WithEnableFederation(),
 		revealdgraphql.WithQueryNamespace("Leads", false), // false = define type, true = extend type
 	)
@@ -116,7 +117,7 @@ func main() {
 	}
 
 	// Create the GraphQL API
-	api, err := revealdgraphql.New(backend, mapping, config, revealdgraphql.WithESClient(esClient))
+	api, err := revealdgraphql.New(backend, config, revealdgraphql.WithESClient(esClient))
 	if err != nil {
 		log.Fatalf("Failed to create GraphQL API: %v", err)
 	}
