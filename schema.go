@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/graphql-go/graphql"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 )
 
 // SchemaGenerator generates GraphQL schemas from Elasticsearch mappings

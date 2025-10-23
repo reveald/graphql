@@ -16,7 +16,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/graphql-go/graphql"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -75,14 +75,14 @@ func (tc *TestContainer) Cleanup(ctx context.Context, t *testing.T) {
 
 // LeadDocument represents a test lead document
 type LeadDocument struct {
-	ID                    string    `json:"id"`
-	LeadType              string    `json:"leadType"`
-	LeadSourceMechanism   string    `json:"leadSourceMechanism"`
-	BranchMarketCode      string    `json:"branchMarketCode"`
-	CreatedAt             time.Time `json:"createdAt"`
-	TenantID              string    `json:"tenantId,omitempty"`
-	CustomerName          string    `json:"customerName,omitempty"`
-	CustomerEmail         string    `json:"customerEmail,omitempty"`
+	ID                  string    `json:"id"`
+	LeadType            string    `json:"leadType"`
+	LeadSourceMechanism string    `json:"leadSourceMechanism"`
+	BranchMarketCode    string    `json:"branchMarketCode"`
+	CreatedAt           time.Time `json:"createdAt"`
+	TenantID            string    `json:"tenantId,omitempty"`
+	CustomerName        string    `json:"customerName,omitempty"`
+	CustomerEmail       string    `json:"customerEmail,omitempty"`
 }
 
 // CreateTestIndex creates a test index with mapping
@@ -228,8 +228,8 @@ type GraphQLRequest struct {
 
 // GraphQLResponse represents a GraphQL response
 type GraphQLResponse struct {
-	Data   interface{}            `json:"data"`
-	Errors []GraphQLError         `json:"errors,omitempty"`
+	Data   interface{}    `json:"data"`
+	Errors []GraphQLError `json:"errors,omitempty"`
 }
 
 // GraphQLError represents a GraphQL error

@@ -8,7 +8,7 @@ import (
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
 	"github.com/graphql-go/graphql"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 )
 
 // contextKey is a custom type for context keys to avoid collisions

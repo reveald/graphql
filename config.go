@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 )
 
 // Config defines the GraphQL API configuration

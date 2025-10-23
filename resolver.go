@@ -11,7 +11,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/graphql-go/graphql"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 )
 
 // ResolverBuilder creates resolvers that execute reveald queries

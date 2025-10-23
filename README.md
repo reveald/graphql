@@ -1,6 +1,6 @@
 # reveald-graphql
 
-A GraphQL API generator for Elasticsearch based on [reveald](https://github.com/reveald/reveald). Automatically generates GraphQL schemas from Elasticsearch index mappings and exposes search functionality through GraphQL queries with **zero manual configuration**.
+A GraphQL API generator for Elasticsearch based on [reveald](https://github.com/reveald/reveald/v2). Automatically generates GraphQL schemas from Elasticsearch index mappings and exposes search functionality through GraphQL queries with **zero manual configuration**.
 
 ## Features
 
@@ -23,7 +23,7 @@ Before using this library, you need:
 
 - **Go 1.18+** (for generics and `any` type support)
 - **Elasticsearch** running and accessible (tested with ES 7.x/8.x)
-- **reveald library** - This library is built on top of [reveald](https://github.com/reveald/reveald) and requires it as a dependency
+- **reveald library** - This library is built on top of [reveald](https://github.com/reveald/reveald/v2) and requires it as a dependency
 
 The library does not work without an active Elasticsearch cluster and reveald backend.
 
@@ -72,8 +72,8 @@ import (
     "os"
 
     revealdgraphql "github.com/wayke-se/reveald-graphql"
-    "github.com/reveald/reveald"
-    "github.com/reveald/reveald/featureset"
+    "github.com/reveald/reveald/v2"
+    "github.com/reveald/reveald/v2/featureset"
 )
 
 func main() {

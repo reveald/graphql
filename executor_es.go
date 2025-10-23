@@ -8,7 +8,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
-	"github.com/reveald/reveald"
+	"github.com/reveald/reveald/v2"
 )
 
 // executeTypedQuery executes an ES query using the typed API and returns a reveald Result
@@ -46,7 +46,6 @@ func executeTypedQuery(
 		searchReq = searchReq.Index(idx)
 	}
 	resp, err := searchReq.Request(req).Do(ctx)
-
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}

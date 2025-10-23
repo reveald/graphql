@@ -8,8 +8,8 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/graphql-go/graphql"
-	"github.com/reveald/reveald"
-	"github.com/reveald/reveald/featureset"
+	"github.com/reveald/reveald/v2"
+	"github.com/reveald/reveald/v2/featureset"
 )
 
 // Integration tests verify that typed ES queries work alongside reveald Features
