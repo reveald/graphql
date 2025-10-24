@@ -64,13 +64,20 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 	if cached, ok := sg.typeCache[docTypeName]; ok {
 		docType = cached
 	} else {
-		// Create new document type with just id field (auto-resolves other fields)
+		// Generate full document type from mapping (same as regular queries)
+		fields := graphql.Fields{}
+
+		for fieldName, field := range queryConfig.Mapping.Properties {
+			gqlField, err := sg.convertFieldToGraphQL(field)
+			if err != nil {
+				return nil
+			}
+			fields[fieldName] = gqlField
+		}
+
 		docType = graphql.NewObject(graphql.ObjectConfig{
-			Name: docTypeName,
-			Fields: graphql.Fields{
-				"id": &graphql.Field{Type: graphql.String},
-				// Other fields will auto-resolve from ES response
-			},
+			Name:   docTypeName,
+			Fields: fields,
 		})
 		sg.typeCache[docTypeName] = docType
 

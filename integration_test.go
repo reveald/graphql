@@ -39,8 +39,9 @@ func TestIntegration_FeatureBasedQuery(t *testing.T) {
 	}
 
 	// Create config with Feature-based query
-	config := NewConfig(mapping)
+	config := NewConfig()
 	config.AddQuery("searchProducts", &QueryConfig{
+		Mapping:     mapping,
 		Description: "Search with reveald Features",
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(
@@ -149,10 +150,11 @@ func TestIntegration_MixedQueryTypes(t *testing.T) {
 	}
 
 	// Create config with BOTH Feature-based and typed ES queries
-	config := NewConfig(mapping)
+	config := NewConfig()
 
 	// Feature-based query
 	config.AddQuery("featureSearch", &QueryConfig{
+		Mapping: mapping,
 		Features: []reveald.Feature{
 			featureset.NewDynamicFilterFeature("brand"),
 			featureset.NewStaticFilterFeature(
@@ -164,6 +166,7 @@ func TestIntegration_MixedQueryTypes(t *testing.T) {
 
 	// Typed ES query with root query
 	config.AddQuery("flexibleSearch", &QueryConfig{
+		Mapping:               mapping,
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
 		RootQuery: &types.Query{
@@ -238,8 +241,9 @@ func TestIntegration_TypedQueryWithAggregations(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig(mapping)
+	config := NewConfig()
 	config.AddQuery("search", &QueryConfig{
+		Mapping: mapping,
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
 	})
@@ -400,10 +404,11 @@ func TestIntegration_ResultFormatConsistency(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig(mapping)
+	config := NewConfig()
 
 	// Feature-based query
 	config.AddQuery("featureSearch", &QueryConfig{
+		Mapping: mapping,
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(),
 			featureset.NewDynamicFilterFeature("brand"),
@@ -413,6 +418,7 @@ func TestIntegration_ResultFormatConsistency(t *testing.T) {
 
 	// Typed ES query
 	config.AddQuery("typedSearch", &QueryConfig{
+		Mapping: mapping,
 		EnableElasticQuerying: true,
 		EnablePagination:      true,
 	})
@@ -480,8 +486,9 @@ func TestIntegration_RootQueryEnforcement(t *testing.T) {
 	}
 
 	// Create config with RootQuery that enforces active=true
-	config := NewConfig(mapping)
+	config := NewConfig()
 	config.AddQuery("search", &QueryConfig{
+		Mapping: mapping,
 		EnableElasticQuerying: true,
 		RootQuery: &types.Query{
 			Term: map[string]types.TermQuery{
@@ -542,8 +549,9 @@ func TestIntegration_ComplexNestedQuery(t *testing.T) {
 		t.Fatalf("failed to parse mapping: %v", err)
 	}
 
-	config := NewConfig(mapping)
+	config := NewConfig()
 	config.AddQuery("search", &QueryConfig{
+		Mapping: mapping,
 		EnableElasticQuerying: true,
 	})
 
@@ -758,8 +766,9 @@ func TestIntegration_BackwardCompatibility(t *testing.T) {
 	}
 
 	// Create API WITHOUT ES client (old behavior)
-	config := NewConfig(mapping)
+	config := NewConfig()
 	config.AddQuery("search", &QueryConfig{
+		Mapping: mapping,
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(),
 		},

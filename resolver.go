@@ -18,22 +18,23 @@ import (
 type ResolverBuilder struct {
 	backend  reveald.Backend
 	esClient *elasticsearch.TypedClient
-	reader   *ArgumentReader
 }
 
 // NewResolverBuilder creates a new resolver builder
-func NewResolverBuilder(backend reveald.Backend, mapping *IndexMapping, esClient *elasticsearch.TypedClient) *ResolverBuilder {
+func NewResolverBuilder(backend reveald.Backend, esClient *elasticsearch.TypedClient) *ResolverBuilder {
 	return &ResolverBuilder{
 		backend:  backend,
 		esClient: esClient,
-		reader:   NewArgumentReader(mapping),
 	}
 }
 
 // BuildResolver creates a resolver function for a query
 func (rb *ResolverBuilder) BuildResolver(queryName string, config *QueryConfig) graphql.FieldResolveFn {
+	// Create argument reader from query's mapping
+	reader := NewArgumentReader(&config.Mapping)
+
 	// Create the endpoint with configured indices and features
-	endpoint := reveald.NewEndpoint(rb.backend, reveald.WithIndices(rb.reader.mapping.IndexName))
+	endpoint := reveald.NewEndpoint(rb.backend, reveald.WithIndices(config.Mapping.IndexName))
 
 	if err := endpoint.Register(config.Features...); err != nil {
 		panic(fmt.Sprintf("failed to register features for query %s: %v", queryName, err))
@@ -43,13 +44,13 @@ func (rb *ResolverBuilder) BuildResolver(queryName string, config *QueryConfig) 
 		// Check if this is an ES typed query
 		if config.EnableElasticQuerying && rb.esClient != nil {
 			if queryArg, hasQuery := params.Args["query"]; hasQuery && queryArg != nil {
-				return rb.executeTypedESQuery(params, config)
+				return rb.executeTypedESQuery(params, config, &config.Mapping)
 			}
 		}
 
 		// Default: use Feature-based flow
 		// Convert GraphQL arguments to reveald Request
-		request, err := rb.reader.Read(params)
+		request, err := reader.Read(params)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read arguments: %w", err)
 		}
@@ -72,12 +73,12 @@ func (rb *ResolverBuilder) BuildResolver(queryName string, config *QueryConfig) 
 		}
 
 		// Convert reveald Result to GraphQL response
-		return rb.convertResult(result, config), nil
+		return rb.convertResult(result, config, &config.Mapping), nil
 	}
 }
 
 // executeTypedESQuery handles typed Elasticsearch queries
-func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, config *QueryConfig) (any, error) {
+func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, config *QueryConfig, mapping *IndexMapping) (any, error) {
 	// Convert GraphQL query argument to ES Query
 	var userQuery *types.Query
 	if queryArg, ok := params.Args["query"]; ok && queryArg != nil {
@@ -134,7 +135,7 @@ func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, con
 	result, err := executeTypedQuery(
 		context.Background(),
 		rb.esClient,
-		[]string{rb.reader.mapping.IndexName},
+		[]string{mapping.IndexName},
 		finalQuery,
 		aggs,
 		limit,
@@ -145,14 +146,14 @@ func (rb *ResolverBuilder) executeTypedESQuery(params graphql.ResolveParams, con
 	}
 
 	// Convert to GraphQL response
-	return rb.convertResult(result, config), nil
+	return rb.convertResult(result, config, mapping), nil
 }
 
 // convertResult converts a reveald Result to a GraphQL response
-func (rb *ResolverBuilder) convertResult(result *reveald.Result, config *QueryConfig) map[string]any {
+func (rb *ResolverBuilder) convertResult(result *reveald.Result, config *QueryConfig, mapping *IndexMapping) map[string]any {
 	// Normalize hits to ensure object fields with properties are arrays
 	for _, hit := range result.Hits {
-		normalizeObjectsToArrays(hit, rb.reader.mapping)
+		normalizeObjectsToArrays(hit, mapping)
 	}
 
 	response := map[string]any{
@@ -205,7 +206,7 @@ func (rb *ResolverBuilder) BuildPrecompiledResolver(queryName string, config *Pr
 
 		// Build ES search
 		searchBuilder := rb.esClient.Search()
-		for _, idx := range []string{rb.reader.mapping.IndexName} {
+		for _, idx := range []string{config.Mapping.IndexName} {
 			searchBuilder = searchBuilder.Index(idx)
 		}
 
@@ -215,12 +216,12 @@ func (rb *ResolverBuilder) BuildPrecompiledResolver(queryName string, config *Pr
 		}
 
 		// Convert ES response with typed aggregations
-		return rb.convertPrecompiledESResponseTyped(resp), nil
+		return rb.convertPrecompiledESResponseTyped(resp, &config.Mapping), nil
 	}
 }
 
 // convertPrecompiledESResponseTyped converts raw ES response to GraphQL format with typed aggregations
-func (rb *ResolverBuilder) convertPrecompiledESResponseTyped(resp *search.Response) map[string]any {
+func (rb *ResolverBuilder) convertPrecompiledESResponseTyped(resp *search.Response, mapping *IndexMapping) map[string]any {
 	response := map[string]any{
 		"totalCount": int64(0),
 		"hits":       make([]map[string]any, 0),
@@ -240,7 +241,7 @@ func (rb *ResolverBuilder) convertPrecompiledESResponseTyped(resp *search.Respon
 			var source map[string]any
 			if err := json.Unmarshal(hit.Source_, &source); err == nil {
 				// Normalize object fields to arrays for GraphQL schema compatibility
-				normalizeObjectsToArrays(source, rb.reader.mapping)
+				normalizeObjectsToArrays(source, mapping)
 				for k, v := range source {
 					doc[k] = v
 				}

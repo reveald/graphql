@@ -35,10 +35,11 @@ func main() {
 	}
 
 	// Configure the GraphQL API
-	config := revealdgraphql.NewConfig(mapping)
+	config := revealdgraphql.NewConfig()
 
 	// Add a precompiled query with complex aggregations
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:      mapping,
 		Description:  "Leads overview with statistics by type and mechanism",
 		QueryBuilder: buildLeadsOverviewQuery,
 		Parameters: graphql.FieldConfigArgument{

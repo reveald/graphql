@@ -41,10 +41,10 @@ func New(backend reveald.Backend, config *Config, opts ...Option) (*GraphQLAPI, 
 	}
 
 	// Build the resolver
-	resolverBuilder := NewResolverBuilder(backend, &config.Mapping, api.esClient)
+	resolverBuilder := NewResolverBuilder(backend, api.esClient)
 
 	// Generate the schema
-	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(config, resolverBuilder)
 	schema, err := generator.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate schema: %w", err)

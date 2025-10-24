@@ -36,11 +36,10 @@ func GenerateSchemaSDL(config *Config) (string, error) {
 	resolverBuilder := &ResolverBuilder{
 		backend:  nil, // Not needed for schema generation
 		esClient: nil, // Not needed for schema generation
-		reader:   NewArgumentReader(&config.Mapping),
 	}
 
 	// Generate the schema
-	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(config, resolverBuilder)
 	schema, err := generator.Generate()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate schema: %w", err)
@@ -62,10 +61,9 @@ func GenerateSchema(config *Config) (graphql.Schema, error) {
 	resolverBuilder := &ResolverBuilder{
 		backend:  nil,
 		esClient: nil,
-		reader:   NewArgumentReader(&config.Mapping),
 	}
 
 	// Generate the schema
-	generator := NewSchemaGenerator(&config.Mapping, config, resolverBuilder)
+	generator := NewSchemaGenerator(config, resolverBuilder)
 	return generator.Generate()
 }

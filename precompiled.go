@@ -58,6 +58,9 @@ type PrecompiledQueryConfig struct {
 	// Indices are multiple Elasticsearch indices to query
 	Indices []string
 
+	// Mapping is the Elasticsearch index mapping for this query
+	Mapping IndexMapping
+
 	// QueryBuilder builds the Elasticsearch search request from GraphQL arguments
 	// Mutually exclusive with QueryJSON - specify only one
 	QueryBuilder QueryBuilderFunc

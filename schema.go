@@ -11,7 +11,6 @@ import (
 
 // SchemaGenerator generates GraphQL schemas from Elasticsearch mappings
 type SchemaGenerator struct {
-	mapping         *IndexMapping
 	config          *Config
 	typeCache       map[string]*graphql.Object
 	resolverBuilder *ResolverBuilder
@@ -21,9 +20,8 @@ type SchemaGenerator struct {
 }
 
 // NewSchemaGenerator creates a new schema generator
-func NewSchemaGenerator(mapping *IndexMapping, config *Config, resolverBuilder *ResolverBuilder) *SchemaGenerator {
+func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *SchemaGenerator {
 	sg := &SchemaGenerator{
-		mapping:         mapping,
 		config:          config,
 		typeCache:       make(map[string]*graphql.Object),
 		resolverBuilder: resolverBuilder,
@@ -118,13 +116,13 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 // generateQueryField generates a GraphQL field for a search query
 func (sg *SchemaGenerator) generateQueryField(queryName string, queryConfig *QueryConfig) (*graphql.Field, error) {
 	// Generate the result type for this query
-	resultType, err := sg.generateResultType(queryName, queryConfig)
+	resultType, err := sg.generateResultType(queryName, queryConfig, &queryConfig.Mapping)
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate arguments for the query
-	args := sg.generateQueryArguments(queryName, queryConfig)
+	args := sg.generateQueryArguments(queryName, queryConfig, &queryConfig.Mapping)
 
 	return &graphql.Field{
 		Type:        resultType,
@@ -135,9 +133,9 @@ func (sg *SchemaGenerator) generateQueryField(queryName string, queryConfig *Que
 }
 
 // generateResultType creates the result type for a query
-func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *QueryConfig) (*graphql.Object, error) {
+func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) (*graphql.Object, error) {
 	// Create the document type
-	docType, err := sg.generateDocumentType(queryName, queryConfig)
+	docType, err := sg.generateDocumentType(queryName, queryConfig, mapping)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +153,7 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 
 	// Add aggregations if enabled
 	if queryConfig.EnableAggregations {
-		aggType := sg.generateAggregationsType(queryName, queryConfig)
+		aggType := sg.generateAggregationsType(queryName, queryConfig, mapping)
 		if aggType != nil {
 			fields["aggregations"] = &graphql.Field{
 				Type:        aggType,
@@ -179,9 +177,9 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 }
 
 // generateDocumentType creates the GraphQL type for a document based on index name
-func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *QueryConfig) (*graphql.Object, error) {
+func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) (*graphql.Object, error) {
 	// Use index name for document type (better for federation/entity resolution)
-	indexName := sg.getIndexNameForType(queryConfig)
+	indexName := mapping.IndexName
 	typeName := fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
 
 	// Check cache - multiple queries on same index share the same document type
@@ -191,7 +189,7 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 
 	fields := graphql.Fields{}
 
-	for fieldName, field := range sg.mapping.Properties {
+	for fieldName, field := range mapping.Properties {
 		// Apply field filter
 		if !sg.shouldIncludeField(fieldName, queryConfig.FieldFilter) {
 			continue
@@ -295,7 +293,7 @@ func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) 
 }
 
 // generateQueryArguments creates the arguments for a search query
-func (sg *SchemaGenerator) generateQueryArguments(queryName string, queryConfig *QueryConfig) graphql.FieldConfigArgument {
+func (sg *SchemaGenerator) generateQueryArguments(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) graphql.FieldConfigArgument {
 	args := graphql.FieldConfigArgument{}
 
 	// Add ES query/aggs arguments if EnableElasticQuerying is true
@@ -311,7 +309,7 @@ func (sg *SchemaGenerator) generateQueryArguments(queryName string, queryConfig 
 	}
 
 	// Add common search arguments from mapping
-	for fieldName, field := range sg.mapping.Properties {
+	for fieldName, field := range mapping.Properties {
 		if !sg.shouldIncludeField(fieldName, queryConfig.FieldFilter) {
 			continue
 		}
@@ -556,7 +554,7 @@ func (sg *SchemaGenerator) createPaginationType() *graphql.Object {
 }
 
 // generateAggregationsType creates the aggregations type
-func (sg *SchemaGenerator) generateAggregationsType(queryName string, queryConfig *QueryConfig) *graphql.Object {
+func (sg *SchemaGenerator) generateAggregationsType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) *graphql.Object {
 	aggFields := graphql.Fields{}
 
 	// First try to get aggregation fields from configured Features
@@ -590,7 +588,7 @@ func (sg *SchemaGenerator) generateAggregationsType(queryName string, queryConfi
 	// Add aggregation fields
 	for _, fieldName := range fieldsToUse {
 		isAutoDetected := autoDetectedSet[fieldName]
-		fieldExists := sg.mapping.GetField(fieldName) != nil
+		fieldExists := mapping.GetField(fieldName) != nil
 
 		// Trust auto-detected fields (features know what they create)
 		// OR fields that exist in mapping (for manual additions)
@@ -689,15 +687,9 @@ func capitalize(s string) string {
 	return s
 }
 
-// getIndexNameForType extracts the primary index name from query config
-func (sg *SchemaGenerator) getIndexNameForType(queryConfig *QueryConfig) string {
-	return sg.mapping.IndexName
-}
-
 // getPrecompiledIndexNameForType extracts the primary index name from precompiled query config
 func (sg *SchemaGenerator) getPrecompiledIndexNameForType(queryConfig *PrecompiledQueryConfig) string {
-	// Fall back to mapping index name
-	return sg.mapping.IndexName
+	return queryConfig.Mapping.IndexName
 }
 
 // sanitizeTypeName converts index name to valid GraphQL type name

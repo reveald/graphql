@@ -39,9 +39,6 @@ type Config struct {
 	// Only relevant when QueryNamespace is set and EnableFederation is true
 	// Default: false
 	ExtendQueryNamespace bool
-
-	// Mapping is the mapping to use for the GraphQL API
-	Mapping IndexMapping
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request
@@ -56,6 +53,9 @@ type RequestInterceptor func(httpReq *http.Request, revealdReq *reveald.Request)
 
 // QueryConfig defines configuration for a single GraphQL query
 type QueryConfig struct {
+	// Mapping is the Elasticsearch index mapping for this query
+	Mapping IndexMapping
+
 	// Features are the reveald features to apply to this query
 	Features []reveald.Feature
 
@@ -156,11 +156,10 @@ func WithPrecompiledQuery(name string, queryConfig *PrecompiledQueryConfig) Conf
 }
 
 // NewConfig creates a new GraphQL API configuration with optional functional options
-func NewConfig(mapping IndexMapping, opts ...ConfigOption) *Config {
+func NewConfig(opts ...ConfigOption) *Config {
 	config := &Config{
 		Queries:            make(map[string]*QueryConfig),
 		PrecompiledQueries: make(map[string]*PrecompiledQueryConfig),
-		Mapping:            mapping,
 	}
 
 	// Apply options

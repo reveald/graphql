@@ -36,13 +36,13 @@ func main() {
 
 	// Configure the GraphQL API with functional options
 	config := revealdgraphql.NewConfig(
-		mapping,
 		revealdgraphql.WithEnableFederation(),
 		// Optional: revealdgraphql.WithQueryNamespace("Products", false),
 	)
 
 	// Add a search query with features
 	config.AddQuery("searchProducts", &revealdgraphql.QueryConfig{
+		Mapping:     mapping,
 		Description: "Search for products with filtering, pagination, and aggregations",
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(
@@ -65,6 +65,7 @@ func main() {
 
 	// Add another query for all products (no active filter)
 	config.AddQuery("allProducts", &revealdgraphql.QueryConfig{
+		Mapping:     mapping,
 		Description: "Get all products without filters",
 		Features: []reveald.Feature{
 			featureset.NewPaginationFeature(
@@ -76,6 +77,7 @@ func main() {
 
 	// Add a flexible query with typed Elasticsearch querying
 	config.AddQuery("flexibleSearch", &revealdgraphql.QueryConfig{
+		Mapping:               mapping,
 		Description:           "Flexible search with full ES query/aggregation support",
 		EnableElasticQuerying: true,
 		EnableAggregations:    true,
@@ -90,6 +92,7 @@ func main() {
 
 	// Add a PRECOMPILED QUERY with complex nested aggregations (using QueryBuilder)
 	config.AddPrecompiledQuery("productAnalytics", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:      mapping,
 		Description:  "Complex product analytics with nested aggregations and filters",
 		QueryBuilder: buildProductAnalyticsQuery,
 		Parameters: graphql.FieldConfigArgument{
@@ -114,6 +117,7 @@ func main() {
 
 	// Add a PRECOMPILED QUERY using QueryJSON (embedded JSON)
 	config.AddPrecompiledQuery("productTrends", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:     mapping,
 		Description: "Product trends using QueryJSON",
 		QueryJSON: `{
 			"size": 0,

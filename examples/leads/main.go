@@ -59,13 +59,13 @@ func main() {
 
 	// Configure the GraphQL API
 	config := revealdgraphql.NewConfig(
-		mapping,
 		revealdgraphql.WithEnableFederation(),
 		revealdgraphql.WithQueryNamespace("Leads", false), // false = define type, true = extend type
 	)
 
 	// Add PRECOMPILED QUERY with simple QueryBuilder (no parameters)
 	config.AddPrecompiledQuery("leadsOverview", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:         mapping,
 		Index:           leadsIndex,
 		Description:     "Leads overview with statistics by type and mechanism",
 		QueryBuilder:    func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
@@ -74,6 +74,7 @@ func main() {
 
 	// Add PRECOMPILED QUERY with QueryBuilder (supports market filtering)
 	config.AddPrecompiledQuery("leadsOverviewByMarket", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:      mapping,
 		Index:        leadsIndex,
 		Description:  "Leads overview with market filtering",
 		QueryBuilder: buildLeadsOverviewQuery,
@@ -87,6 +88,7 @@ func main() {
 
 	// Add PRECOMPILED QUERY with RootQueryBuilder (demonstrates tenant/permission filtering)
 	config.AddPrecompiledQuery("leadsOverviewWithTenant", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:      mapping,
 		Index:        leadsIndex,
 		Description:  "Leads overview with dynamic tenant filtering from HTTP headers",
 		QueryBuilder: func(args map[string]any) *search.Request { return buildLeadsOverviewQuery(args) },
