@@ -64,10 +64,15 @@ func main() {
 		// Optional: revealdgraphql.WithQueryNamespace("Products", false),
 
 		// Add custom Review type with @key directive for Federation
+		// Resolvable: false means this type is REFERENCED but not OWNED by this subgraph
+		// - The @key directive appears in the SDL (for Federation schema composition)
+		// - The type is NOT in the _Entity union (this subgraph can't resolve Review entities)
+		// - Another subgraph (e.g., reviews service) owns and resolves Review entities
 		revealdgraphql.WithCustomTypesWithKeys(
 			revealdgraphql.CustomTypeWithKeys{
 				Type:       reviewType,
-				EntityKeys: []string{"id"}, // This adds @key(fields: "id") to the SDL
+				EntityKeys: []string{"id"}, // Adds @key(fields: "id") to SDL
+				Resolvable: false,          // Reference only - not resolvable by this subgraph
 			},
 		),
 

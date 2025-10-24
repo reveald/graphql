@@ -55,9 +55,14 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 		return cachedType
 	}
 
-	// Use index name for document type (same as regular queries)
-	indexName := sg.getPrecompiledIndexNameForType(queryConfig)
-	docTypeName := fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
+	// Use custom type name if provided, otherwise use index name for document type
+	var docTypeName string
+	if queryConfig.HitsTypeName != "" {
+		docTypeName = queryConfig.HitsTypeName
+	} else {
+		indexName := sg.getPrecompiledIndexNameForType(queryConfig)
+		docTypeName = fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
+	}
 
 	// Check if document type already exists in cache (shared across queries)
 	var docType *graphql.Object
@@ -92,7 +97,9 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 
 		// Register entity key fields if configured at query level
 		if len(queryConfig.EntityKeyFields) > 0 {
+			// Query-level entities are always resolvable, so add to both maps
 			sg.entityKeys[docTypeName] = queryConfig.EntityKeyFields
+			sg.sdlEntityKeys[docTypeName] = queryConfig.EntityKeyFields
 
 			// Register with entity resolver if federation is enabled
 			if sg.config.EnableFederation && sg.entityResolver != nil {

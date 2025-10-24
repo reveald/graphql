@@ -21,7 +21,8 @@ type SchemaGenerator struct {
 	resolverBuilder *ResolverBuilder
 	bucketType      *graphql.Object
 	paginationType  *graphql.Object
-	entityKeys      map[string][]string    // Maps type name to entity key fields (e.g., "LeadDocument" -> []string{"id"})
+	entityKeys      map[string][]string    // Maps type name to entity key fields for RESOLVABLE entities (included in _Entity union)
+	sdlEntityKeys   map[string][]string    // Maps type name to entity key fields for SDL @key directives (all entities, resolvable or not)
 	entityResolver  *EntityResolver        // Resolver for _entities query
 	schemaRef       *schemaRef             // Reference to the generated schema (for _service query)
 }
@@ -33,6 +34,7 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 		typeCache:       make(map[string]*graphql.Object),
 		resolverBuilder: resolverBuilder,
 		entityKeys:      make(map[string][]string),
+		sdlEntityKeys:   make(map[string][]string),
 		schemaRef:       &schemaRef{},
 	}
 
@@ -47,10 +49,18 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 
 	// Add custom types with entity keys
 	for _, customTypeWithKeys := range config.CustomTypesWithKeys {
-		sg.typeCache[customTypeWithKeys.Type.Name()] = customTypeWithKeys.Type
+		typeName := customTypeWithKeys.Type.Name()
+		sg.typeCache[typeName] = customTypeWithKeys.Type
+
 		// Register entity keys if provided
 		if len(customTypeWithKeys.EntityKeys) > 0 {
-			sg.entityKeys[customTypeWithKeys.Type.Name()] = customTypeWithKeys.EntityKeys
+			// Always add to SDL keys (for @key directives in schema)
+			sg.sdlEntityKeys[typeName] = customTypeWithKeys.EntityKeys
+
+			// Only add to entityKeys if resolvable (for _Entity union)
+			if customTypeWithKeys.Resolvable {
+				sg.entityKeys[typeName] = customTypeWithKeys.EntityKeys
+			}
 		}
 	}
 
@@ -96,7 +106,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		// Capture references for closures
 		schemaRef := sg.schemaRef
 		config := sg.config
-		entityKeys := sg.entityKeys
+		sdlEntityKeys := sg.sdlEntityKeys // Use SDL keys for @key directives (includes all entities)
 
 		// Add _service query
 		queryFields["_service"] = &graphql.Field{
@@ -107,7 +117,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 				if schemaRef.schema == nil {
 					return nil, fmt.Errorf("schema not yet initialized")
 				}
-				sdl := ExportFederationSDL(*schemaRef.schema, config, entityKeys)
+				sdl := ExportFederationSDL(*schemaRef.schema, config, sdlEntityKeys)
 				return map[string]any{
 					"sdl": sdl,
 				}, nil
@@ -269,9 +279,14 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 
 // generateDocumentType creates the GraphQL type for a document based on index name
 func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) (*graphql.Object, error) {
-	// Use index name for document type (better for federation/entity resolution)
-	indexName := mapping.IndexName
-	typeName := fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
+	// Use custom type name if provided, otherwise use index name for document type
+	var typeName string
+	if queryConfig.HitsTypeName != "" {
+		typeName = queryConfig.HitsTypeName
+	} else {
+		indexName := mapping.IndexName
+		typeName = fmt.Sprintf("%sDocument", sanitizeTypeName(indexName))
+	}
 
 	// Check cache - multiple queries on same index share the same document type
 	if cachedType, ok := sg.typeCache[typeName]; ok {
@@ -310,7 +325,9 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 
 	// Register entity key fields if configured at query level
 	if len(queryConfig.EntityKeyFields) > 0 {
+		// Query-level entities are always resolvable, so add to both maps
 		sg.entityKeys[typeName] = queryConfig.EntityKeyFields
+		sg.sdlEntityKeys[typeName] = queryConfig.EntityKeyFields
 
 		// Register with entity resolver if federation is enabled
 		if sg.config.EnableFederation && sg.entityResolver != nil {

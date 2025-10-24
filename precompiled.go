@@ -93,6 +93,11 @@ type PrecompiledQueryConfig struct {
 	//   []string{"id"} → @key(fields: "id")
 	//   []string{"leadId", "conversationId"} → @key(fields: "leadId") @key(fields: "conversationId")
 	EntityKeyFields []string
+
+	// HitsTypeName is an optional custom name for the document type returned in the hits field
+	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
+	// Example: "Lead" instead of "TestLeadsDocument"
+	HitsTypeName string
 }
 
 // GetIndices returns all indices configured for this query

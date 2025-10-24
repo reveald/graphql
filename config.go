@@ -38,6 +38,12 @@ type CustomTypeWithKeys struct {
 	//   []string{"id"} → @key(fields: "id")
 	//   []string{"id", "productId"} → @key(fields: "id") @key(fields: "productId")
 	EntityKeys []string
+
+	// Resolvable indicates whether this subgraph can resolve this entity via _entities query
+	// When true: Type is added to _Entity union (this subgraph owns/resolves the entity)
+	// When false: Only @key appears in SDL (this subgraph references but doesn't resolve the entity)
+	// Default: false (reference only)
+	Resolvable bool
 }
 
 // Config defines the GraphQL API configuration
@@ -147,6 +153,11 @@ type QueryConfig struct {
 	//   []string{"id"} → @key(fields: "id")
 	//   []string{"id", "email"} → @key(fields: "id") @key(fields: "email")
 	EntityKeyFields []string
+
+	// HitsTypeName is an optional custom name for the document type returned in the hits field
+	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
+	// Example: "Lead" instead of "TestLeadsDocument"
+	HitsTypeName string
 }
 
 // FieldFilter defines which fields to include or exclude
