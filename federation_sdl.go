@@ -21,10 +21,31 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[s
         import: ["@key", "@shareable"])
 
 `)
-	}
 
-	// Export scalar types (if any custom ones)
-	// graphql-go doesn't expose custom scalars easily, so we skip for now
+		// Add _Any scalar
+		sdl.WriteString("scalar _Any\n\n")
+
+		// Add _Service type
+		sdl.WriteString(`type _Service {
+  sdl: String!
+}
+
+`)
+
+		// Add _Entity union if we have entities
+		if len(entityKeys) > 0 {
+			sdl.WriteString("union _Entity = ")
+			first := true
+			for typeName := range entityKeys {
+				if !first {
+					sdl.WriteString(" | ")
+				}
+				sdl.WriteString(typeName)
+				first = false
+			}
+			sdl.WriteString("\n\n")
+		}
+	}
 
 	// Export types from schema
 	typeMap := schema.TypeMap()

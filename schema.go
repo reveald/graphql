@@ -9,6 +9,11 @@ import (
 	"github.com/reveald/reveald/v2"
 )
 
+// schemaRef holds a reference to the generated schema that gets populated after schema creation
+type schemaRef struct {
+	schema *graphql.Schema
+}
+
 // SchemaGenerator generates GraphQL schemas from Elasticsearch mappings
 type SchemaGenerator struct {
 	config          *Config
@@ -16,7 +21,9 @@ type SchemaGenerator struct {
 	resolverBuilder *ResolverBuilder
 	bucketType      *graphql.Object
 	paginationType  *graphql.Object
-	entityKeys      map[string][]string // Maps type name to entity key fields (e.g., "LeadDocument" -> []string{"id"})
+	entityKeys      map[string][]string    // Maps type name to entity key fields (e.g., "LeadDocument" -> []string{"id"})
+	entityResolver  *EntityResolver        // Resolver for _entities query
+	schemaRef       *schemaRef             // Reference to the generated schema (for _service query)
 }
 
 // NewSchemaGenerator creates a new schema generator
@@ -26,11 +33,17 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 		typeCache:       make(map[string]*graphql.Object),
 		resolverBuilder: resolverBuilder,
 		entityKeys:      make(map[string][]string),
+		schemaRef:       &schemaRef{},
 	}
 
 	// Initialize shared types
 	sg.bucketType = sg.createBucketType()
 	sg.paginationType = sg.createPaginationType()
+
+	// Initialize entity resolver if federation is enabled
+	if config.EnableFederation {
+		sg.entityResolver = NewEntityResolver(resolverBuilder.esClient, resolverBuilder.backend)
+	}
 
 	return sg
 }
@@ -58,6 +71,50 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		queryFields[queryName] = field
 	}
 
+	// Add federation queries if enabled
+	if sg.config.EnableFederation {
+		// Initialize federation types
+		initFederationTypes()
+
+		// Create _Entity union
+		entityUnion := CreateEntityUnion(sg.entityKeys, sg.typeCache)
+
+		// Capture references for closures
+		schemaRef := sg.schemaRef
+		config := sg.config
+		entityKeys := sg.entityKeys
+
+		// Add _service query
+		queryFields["_service"] = &graphql.Field{
+			Type:        graphql.NewNonNull(ServiceType),
+			Description: "Federation service metadata",
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				// Generate SDL on-demand using the actual schema
+				if schemaRef.schema == nil {
+					return nil, fmt.Errorf("schema not yet initialized")
+				}
+				sdl := ExportFederationSDL(*schemaRef.schema, config, entityKeys)
+				return map[string]any{
+					"sdl": sdl,
+				}, nil
+			},
+		}
+
+		// Add _entities query if we have entities
+		if entityUnion != nil {
+			queryFields["_entities"] = &graphql.Field{
+				Type: graphql.NewList(entityUnion),
+				Args: graphql.FieldConfigArgument{
+					"representations": &graphql.ArgumentConfig{
+						Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(AnyScalar))),
+					},
+				},
+				Description: "Resolve entity references",
+				Resolve:     sg.entityResolver.ResolveEntities,
+			}
+		}
+	}
+
 	// If QueryNamespace is set, wrap all queries in a namespace object
 	var rootQueryFields graphql.Fields
 	if sg.config.QueryNamespace != "" {
@@ -72,7 +129,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		// Determine field name (lowercase version of namespace)
 		fieldName := strings.ToLower(sg.config.QueryNamespace[:1]) + sg.config.QueryNamespace[1:]
 
-		// Root Query only has the namespace field
+		// Create root query fields
 		rootQueryFields = graphql.Fields{
 			fieldName: &graphql.Field{
 				Type:        namespaceType,
@@ -82,6 +139,18 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 					return map[string]interface{}{}, nil
 				},
 			},
+		}
+
+		// Add federation queries to root level (not under namespace)
+		if sg.config.EnableFederation {
+			if serviceField, ok := queryFields["_service"]; ok {
+				rootQueryFields["_service"] = serviceField
+				delete(queryFields, "_service")
+			}
+			if entitiesField, ok := queryFields["_entities"]; ok {
+				rootQueryFields["_entities"] = entitiesField
+				delete(queryFields, "_entities")
+			}
 		}
 	} else {
 		// No namespace - queries at root level
@@ -110,7 +179,15 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		)
 	}
 
-	return graphql.NewSchema(schemaConfig)
+	schema, err := graphql.NewSchema(schemaConfig)
+	if err != nil {
+		return schema, err
+	}
+
+	// Populate the schema reference for _service resolver
+	sg.schemaRef.schema = &schema
+
+	return schema, nil
 }
 
 // generateQueryField generates a GraphQL field for a search query
@@ -211,6 +288,24 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 	// Register entity key fields if configured at query level
 	if len(queryConfig.EntityKeyFields) > 0 {
 		sg.entityKeys[typeName] = queryConfig.EntityKeyFields
+
+		// Register with entity resolver if federation is enabled
+		if sg.config.EnableFederation && sg.entityResolver != nil {
+			// Create reveald endpoint for this query
+			endpoint := reveald.NewEndpoint(sg.resolverBuilder.backend, reveald.WithIndices(mapping.IndexName))
+			if err := endpoint.Register(queryConfig.Features...); err == nil {
+				reader := NewArgumentReader(mapping)
+				sg.entityResolver.RegisterEntityType(typeName, &EntityTypeMapping{
+					QueryName:       queryName,
+					QueryConfig:     queryConfig,
+					RevealdEndpoint: endpoint,
+					ArgumentReader:  reader,
+					UseFeatureFlow:  true,
+					Mapping:         mapping,
+					EntityKeys:      queryConfig.EntityKeyFields,
+				})
+			}
+		}
 	}
 
 	sg.typeCache[typeName] = docType

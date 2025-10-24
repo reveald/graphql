@@ -84,6 +84,17 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 		// Register entity key fields if configured at query level
 		if len(queryConfig.EntityKeyFields) > 0 {
 			sg.entityKeys[docTypeName] = queryConfig.EntityKeyFields
+
+			// Register with entity resolver if federation is enabled
+			if sg.config.EnableFederation && sg.entityResolver != nil {
+				sg.entityResolver.RegisterEntityType(docTypeName, &EntityTypeMapping{
+					QueryName:         queryName,
+					PrecompiledConfig: queryConfig,
+					UseFeatureFlow:    false,
+					Mapping:           &queryConfig.Mapping,
+					EntityKeys:        queryConfig.EntityKeyFields,
+				})
+			}
 		}
 	}
 
