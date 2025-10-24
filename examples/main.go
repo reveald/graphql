@@ -34,10 +34,79 @@ func main() {
 		log.Fatalf("Failed to parse mapping: %v", err)
 	}
 
+	// Define a custom Review type
+	reviewType := graphql.NewObject(graphql.ObjectConfig{
+		Name:        "Review",
+		Description: "Product review entity",
+		Fields: graphql.Fields{
+			"id": &graphql.Field{
+				Type:        graphql.NewNonNull(graphql.String),
+				Description: "Review ID",
+			},
+			"productId": &graphql.Field{
+				Type:        graphql.String,
+				Description: "Product ID this review belongs to",
+			},
+			"rating": &graphql.Field{
+				Type:        graphql.Int,
+				Description: "Rating (1-5)",
+			},
+			"comment": &graphql.Field{
+				Type:        graphql.String,
+				Description: "Review comment",
+			},
+		},
+	})
+
 	// Configure the GraphQL API with functional options
 	config := revealdgraphql.NewConfig(
 		revealdgraphql.WithEnableFederation(),
 		// Optional: revealdgraphql.WithQueryNamespace("Products", false),
+
+		// Add custom Review type with @key directive for Federation
+		revealdgraphql.WithCustomTypesWithKeys(
+			revealdgraphql.CustomTypeWithKeys{
+				Type:       reviewType,
+				EntityKeys: []string{"id"}, // This adds @key(fields: "id") to the SDL
+			},
+		),
+
+		// Extend ProductsDocument type with custom "reviews" field
+		revealdgraphql.WithTypeExtension("ProductsDocument", []revealdgraphql.FieldExtension{
+			{
+				FieldName: "reviews",
+				Field: &graphql.Field{
+					Type:        graphql.NewList(reviewType),
+					Description: "Product reviews (custom field example)",
+					Resolve: func(p graphql.ResolveParams) (any, error) {
+						// Access parent product document via p.Source
+						product, ok := p.Source.(map[string]any)
+						if !ok {
+							return nil, fmt.Errorf("invalid product data")
+						}
+
+						productID, _ := product["id"].(string)
+
+						// Example: Return mock reviews
+						// In production, you would fetch from ES or another data source
+						return []map[string]any{
+							{
+								"id":        "review-1",
+								"productId": productID,
+								"rating":    5,
+								"comment":   "Great product!",
+							},
+							{
+								"id":        "review-2",
+								"productId": productID,
+								"rating":    4,
+								"comment":   "Good value",
+							},
+						}, nil
+					},
+				},
+			},
+		}),
 	)
 
 	// Add a search query with features
@@ -185,6 +254,22 @@ query {
       category { value count }
       brand { value count }
       tags { value count }
+    }
+  }
+}
+
+# Query with custom reviews field:
+query {
+  searchProducts(limit: 5) {
+    hits {
+      id
+      name
+      price
+      reviews {
+        id
+        rating
+        comment
+      }
     }
   }
 }

@@ -75,6 +75,15 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 			fields[fieldName] = gqlField
 		}
 
+		// Apply type extensions (custom fields)
+		for _, typeExt := range sg.config.TypeExtensions {
+			if typeExt.TypeName == docTypeName {
+				for _, fieldExt := range typeExt.Fields {
+					fields[fieldExt.FieldName] = fieldExt.Field
+				}
+			}
+		}
+
 		docType = graphql.NewObject(graphql.ObjectConfig{
 			Name:   docTypeName,
 			Fields: fields,

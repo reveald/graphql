@@ -40,6 +40,20 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 	sg.bucketType = sg.createBucketType()
 	sg.paginationType = sg.createPaginationType()
 
+	// Add custom types to typeCache
+	for _, customType := range config.CustomTypes {
+		sg.typeCache[customType.Name()] = customType
+	}
+
+	// Add custom types with entity keys
+	for _, customTypeWithKeys := range config.CustomTypesWithKeys {
+		sg.typeCache[customTypeWithKeys.Type.Name()] = customTypeWithKeys.Type
+		// Register entity keys if provided
+		if len(customTypeWithKeys.EntityKeys) > 0 {
+			sg.entityKeys[customTypeWithKeys.Type.Name()] = customTypeWithKeys.EntityKeys
+		}
+	}
+
 	// Initialize entity resolver if federation is enabled
 	if config.EnableFederation {
 		sg.entityResolver = NewEntityResolver(resolverBuilder.esClient, resolverBuilder.backend)
@@ -278,6 +292,15 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 		}
 
 		fields[fieldName] = gqlField
+	}
+
+	// Apply type extensions (custom fields)
+	for _, typeExt := range sg.config.TypeExtensions {
+		if typeExt.TypeName == typeName {
+			for _, fieldExt := range typeExt.Fields {
+				fields[fieldExt.FieldName] = fieldExt.Field
+			}
+		}
 	}
 
 	docType := graphql.NewObject(graphql.ObjectConfig{

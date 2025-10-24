@@ -4,8 +4,41 @@ import (
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/graphql-go/graphql"
 	"github.com/reveald/reveald/v2"
 )
+
+// FieldExtension defines a custom field to add to a generated GraphQL type
+type FieldExtension struct {
+	// FieldName is the name of the field to add (e.g., "reviews")
+	FieldName string
+
+	// Field is the complete GraphQL field definition including type and resolver
+	// The resolver receives full graphql.ResolveParams with access to parent document via p.Source
+	Field *graphql.Field
+}
+
+// TypeExtension defines custom fields to add to a specific generated type
+type TypeExtension struct {
+	// TypeName is the name of the generated type to extend (e.g., "ProductDocument")
+	TypeName string
+
+	// Fields are the custom fields to add to this type
+	Fields []FieldExtension
+}
+
+// CustomTypeWithKeys defines a custom GraphQL type with optional entity keys for Federation
+type CustomTypeWithKeys struct {
+	// Type is the GraphQL object type
+	Type *graphql.Object
+
+	// EntityKeys specifies the fields to use as entity keys for Apollo Federation
+	// Each element represents one @key directive with space-separated field names
+	// Examples:
+	//   []string{"id"} → @key(fields: "id")
+	//   []string{"id", "productId"} → @key(fields: "id") @key(fields: "productId")
+	EntityKeys []string
+}
 
 // Config defines the GraphQL API configuration
 type Config struct {
@@ -39,6 +72,18 @@ type Config struct {
 	// Only relevant when QueryNamespace is set and EnableFederation is true
 	// Default: false
 	ExtendQueryNamespace bool
+
+	// TypeExtensions defines custom fields to add to generated types
+	// The custom fields are shared across all queries that return the same type
+	// Example: Add "reviews" field to ProductDocument type
+	TypeExtensions []TypeExtension
+
+	// CustomTypes defines additional GraphQL object types to include in the schema
+	// Useful for types referenced by field extensions (e.g., Review type for reviews field)
+	CustomTypes []*graphql.Object
+
+	// CustomTypesWithKeys defines custom types with entity keys for Federation
+	CustomTypesWithKeys []CustomTypeWithKeys
 }
 
 // RootQueryBuilder is a function that builds a root query based on the HTTP request
@@ -155,6 +200,39 @@ func WithPrecompiledQuery(name string, queryConfig *PrecompiledQueryConfig) Conf
 	}
 }
 
+// WithTypeExtension adds custom fields to a generated GraphQL type
+// Example: Add "reviews" field to ProductDocument type
+func WithTypeExtension(typeName string, fields []FieldExtension) ConfigOption {
+	return func(c *Config) {
+		c.TypeExtensions = append(c.TypeExtensions, TypeExtension{
+			TypeName: typeName,
+			Fields:   fields,
+		})
+	}
+}
+
+// WithCustomTypes adds custom GraphQL object types to the schema
+// These types can be referenced by field extensions
+func WithCustomTypes(types ...*graphql.Object) ConfigOption {
+	return func(c *Config) {
+		c.CustomTypes = append(c.CustomTypes, types...)
+	}
+}
+
+// WithCustomTypesWithKeys adds custom GraphQL types with entity keys for Federation
+// This allows custom types to be marked with @key directives in the SDL
+// Example:
+//
+//	WithCustomTypesWithKeys(CustomTypeWithKeys{
+//	    Type: reviewType,
+//	    EntityKeys: []string{"id"},
+//	})
+func WithCustomTypesWithKeys(types ...CustomTypeWithKeys) ConfigOption {
+	return func(c *Config) {
+		c.CustomTypesWithKeys = append(c.CustomTypesWithKeys, types...)
+	}
+}
+
 // NewConfig creates a new GraphQL API configuration with optional functional options
 func NewConfig(opts ...ConfigOption) *Config {
 	config := &Config{
@@ -184,4 +262,22 @@ func (c *Config) AddPrecompiledQuery(name string, config *PrecompiledQueryConfig
 		c.PrecompiledQueries = make(map[string]*PrecompiledQueryConfig)
 	}
 	c.PrecompiledQueries[name] = config
+}
+
+// AddTypeExtension adds custom fields to a generated GraphQL type
+func (c *Config) AddTypeExtension(typeName string, fields []FieldExtension) {
+	c.TypeExtensions = append(c.TypeExtensions, TypeExtension{
+		TypeName: typeName,
+		Fields:   fields,
+	})
+}
+
+// AddCustomTypes adds custom GraphQL object types to the schema
+func (c *Config) AddCustomTypes(types ...*graphql.Object) {
+	c.CustomTypes = append(c.CustomTypes, types...)
+}
+
+// AddCustomTypesWithKeys adds custom types with entity keys for Federation
+func (c *Config) AddCustomTypesWithKeys(types ...CustomTypeWithKeys) {
+	c.CustomTypesWithKeys = append(c.CustomTypesWithKeys, types...)
 }
