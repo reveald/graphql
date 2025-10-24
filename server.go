@@ -19,11 +19,12 @@ const httpRequestKey = contextKey("httpRequest")
 
 // GraphQLAPI is the main GraphQL server
 type GraphQLAPI struct {
-	backend    reveald.Backend
-	esClient   *elasticsearch.TypedClient
-	schema     graphql.Schema
-	config     *Config
-	entityKeys map[string][]string // Maps type name to entity key fields for federation
+	backend       reveald.Backend
+	esClient      *elasticsearch.TypedClient
+	schema        graphql.Schema
+	config        *Config
+	entityKeys    map[string][]string // Resolvable entities (in _Entity union)
+	sdlEntityKeys map[string][]string // All entities with @key directives (for SDL generation)
 }
 
 // Option is a functional option for configuring the GraphQL API
@@ -52,6 +53,7 @@ func New(backend reveald.Backend, config *Config, opts ...Option) (*GraphQLAPI, 
 
 	api.schema = schema
 	api.entityKeys = generator.entityKeys
+	api.sdlEntityKeys = generator.sdlEntityKeys
 
 	return api, nil
 }
@@ -120,7 +122,7 @@ func (api *GraphQLAPI) GetSchema() graphql.Schema {
 // ExportSDL exports the schema as SDL (Schema Definition Language)
 // with optional Apollo Federation v2 annotations
 func (api *GraphQLAPI) ExportSDL() string {
-	return ExportFederationSDL(api.schema, api.config, api.entityKeys)
+	return ExportFederationSDL(api.schema, api.config, api.sdlEntityKeys, api.entityKeys)
 }
 
 const graphiQLHTML = `

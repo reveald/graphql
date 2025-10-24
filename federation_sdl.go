@@ -10,7 +10,9 @@ import (
 
 // ExportFederationSDL exports the GraphQL schema as SDL (Schema Definition Language)
 // with Apollo Federation v2 annotations
-func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[string][]string) string {
+// - sdlEntityKeys: All entities with @key directives (both resolvable and reference-only)
+// - resolvableEntityKeys: Only entities resolvable by this subgraph (included in _Entity union)
+func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys map[string][]string, resolvableEntityKeys map[string][]string) string {
 	enableFederation := config.EnableFederation
 	var sdl strings.Builder
 
@@ -32,11 +34,11 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[s
 
 `)
 
-		// Add _Entity union if we have entities
-		if len(entityKeys) > 0 {
+		// Add _Entity union if we have resolvable entities
+		if len(resolvableEntityKeys) > 0 {
 			sdl.WriteString("union _Entity = ")
 			first := true
-			for typeName := range entityKeys {
+			for typeName := range resolvableEntityKeys {
 				if !first {
 					sdl.WriteString(" | ")
 				}
@@ -80,10 +82,13 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[s
 			// Check if this is the namespace type and should be extended
 			isExtended := enableFederation && config.ExtendQueryNamespace && typeName == namespaceTypeName
 
-			// Get entity key fields for this type (if any)
-			keyFieldsList := entityKeys[typeName]
+			// Get entity key fields for this type (if any) from SDL keys
+			keyFieldsList := sdlEntityKeys[typeName]
 
-			sdl.WriteString(exportObjectType(t, enableFederation, isExtended, keyFieldsList))
+			// Check if this entity is resolvable by this subgraph
+			_, isResolvable := resolvableEntityKeys[typeName]
+
+			sdl.WriteString(exportObjectType(t, enableFederation, isExtended, keyFieldsList, isResolvable))
 			sdl.WriteString("\n")
 
 		case *graphql.Enum:
@@ -98,7 +103,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[s
 
 	// Export Query type last
 	if queryType := schema.QueryType(); queryType != nil {
-		sdl.WriteString(exportObjectType(queryType, false, false, nil)) // Query is never shareable, extended, or has entity keys
+		sdl.WriteString(exportObjectType(queryType, false, false, nil, true)) // Query is never shareable, extended, or has entity keys
 		sdl.WriteString("\n")
 	}
 
@@ -106,7 +111,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, entityKeys map[s
 }
 
 // exportObjectType exports a GraphQL object type as SDL
-func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool, entityKeyFields []string) string {
+func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool, entityKeyFields []string, isResolvable bool) string {
 	var sdl strings.Builder
 
 	// Add description if present (using # comment syntax for types)
@@ -129,7 +134,12 @@ func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended
 			if directives != "" {
 				directives += " "
 			}
-			directives += fmt.Sprintf("@key(fields: \"%s\")", keyField)
+			// Add resolvable: false parameter if entity is not resolvable by this subgraph
+			if !isResolvable {
+				directives += fmt.Sprintf("@key(fields: \"%s\", resolvable: false)", keyField)
+			} else {
+				directives += fmt.Sprintf("@key(fields: \"%s\")", keyField)
+			}
 		}
 	}
 

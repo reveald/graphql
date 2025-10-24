@@ -106,7 +106,8 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		// Capture references for closures
 		schemaRef := sg.schemaRef
 		config := sg.config
-		sdlEntityKeys := sg.sdlEntityKeys // Use SDL keys for @key directives (includes all entities)
+		sdlEntityKeys := sg.sdlEntityKeys       // All entities with @key directives
+		resolvableEntityKeys := sg.entityKeys   // Only resolvable entities
 
 		// Add _service query
 		queryFields["_service"] = &graphql.Field{
@@ -117,7 +118,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 				if schemaRef.schema == nil {
 					return nil, fmt.Errorf("schema not yet initialized")
 				}
-				sdl := ExportFederationSDL(*schemaRef.schema, config, sdlEntityKeys)
+				sdl := ExportFederationSDL(*schemaRef.schema, config, sdlEntityKeys, resolvableEntityKeys)
 				return map[string]any{
 					"sdl": sdl,
 				}, nil
@@ -188,6 +189,18 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 
 	schemaConfig := graphql.SchemaConfig{
 		Query: graphql.NewObject(rootQuery),
+	}
+
+	// Add custom types to schema so they appear in TypeMap (even if not referenced by queries)
+	var customTypes []graphql.Type
+	for _, customType := range sg.config.CustomTypes {
+		customTypes = append(customTypes, customType)
+	}
+	for _, customTypeWithKeys := range sg.config.CustomTypesWithKeys {
+		customTypes = append(customTypes, customTypeWithKeys.Type)
+	}
+	if len(customTypes) > 0 {
+		schemaConfig.Types = customTypes
 	}
 
 	// Add federation directives if enabled
@@ -301,9 +314,24 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 			continue
 		}
 
-		gqlField, err := sg.convertFieldToGraphQL(field)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert field %s: %w", fieldName, err)
+		// Check for field type override
+		var gqlField *graphql.Field
+		if queryConfig.FieldTypeOverrides != nil {
+			if overrideType, ok := queryConfig.FieldTypeOverrides[fieldName]; ok {
+				// Use the override type
+				gqlField = &graphql.Field{
+					Type: overrideType,
+				}
+			}
+		}
+
+		// If no override, convert from ES type
+		if gqlField == nil {
+			var err error
+			gqlField, err = sg.convertFieldToGraphQL(field)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert field %s: %w", fieldName, err)
+			}
 		}
 
 		fields[fieldName] = gqlField

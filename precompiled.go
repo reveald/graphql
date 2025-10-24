@@ -94,6 +94,17 @@ type PrecompiledQueryConfig struct {
 	//   []string{"leadId", "conversationId"} → @key(fields: "leadId") @key(fields: "conversationId")
 	EntityKeyFields []string
 
+	// FieldFilter allows specifying which fields to include/exclude from the schema
+	FieldFilter *FieldFilter
+
+	// FieldTypeOverrides allows overriding the GraphQL type for specific fields
+	// Example: map[string]graphql.Output{"id": graphql.NewNonNull(graphql.ID)}
+	// This is useful for:
+	// - Making fields non-nullable (NewNonNull)
+	// - Using GraphQL ID type for identifiers
+	// - Custom scalar types
+	FieldTypeOverrides map[string]graphql.Output
+
 	// HitsTypeName is an optional custom name for the document type returned in the hits field
 	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
 	// Example: "Lead" instead of "TestLeadsDocument"

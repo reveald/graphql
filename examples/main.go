@@ -135,6 +135,12 @@ func main() {
 		EnablePagination:   true,
 		EnableSorting:      true,
 		// Aggregation fields are auto-detected from Features!
+
+		// Override field types (make id non-nullable and use GraphQL ID type)
+		FieldTypeOverrides: map[string]graphql.Output{
+			"id":   graphql.NewNonNull(graphql.ID),
+			"name": graphql.NewNonNull(graphql.String),
+		},
 	})
 
 	// Add another query for all products (no active filter)
@@ -147,6 +153,21 @@ func main() {
 			),
 		},
 		EnablePagination: true,
+	})
+
+	// Add a query with field filtering (only expose specific fields)
+	config.AddQuery("publicProducts", &revealdgraphql.QueryConfig{
+		Mapping:     mapping,
+		Description: "Public product listing with limited fields",
+		Features: []reveald.Feature{
+			featureset.NewPaginationFeature(
+				featureset.WithPageSize(20),
+			),
+		},
+		EnablePagination: true,
+		FieldFilter: &revealdgraphql.FieldFilter{
+			Include: []string{"id", "name", "price", "category", "brand", "description"},
+		},
 	})
 
 	// Add a flexible query with typed Elasticsearch querying
@@ -224,6 +245,31 @@ func main() {
 		}`,
 	})
 
+	// Add a PRECOMPILED QUERY with FieldFilter (limit exposed fields)
+	config.AddPrecompiledQuery("limitedProductAnalytics", &revealdgraphql.PrecompiledQueryConfig{
+		Mapping:      mapping,
+		Description:  "Product analytics with limited fields in results",
+		QueryBuilder: buildProductAnalyticsQuery,
+		Parameters: graphql.FieldConfigArgument{
+			"minPrice": &graphql.ArgumentConfig{
+				Type:        graphql.Float,
+				Description: "Minimum price filter",
+			},
+			"maxPrice": &graphql.ArgumentConfig{
+				Type:        graphql.Float,
+				Description: "Maximum price filter",
+			},
+		},
+		SampleParameters: map[string]any{
+			"minPrice": 0.0,
+			"maxPrice": 1000.0,
+		},
+		// Only expose id, name, and price in results
+		FieldFilter: &revealdgraphql.FieldFilter{
+			Include: []string{"id", "name", "price"},
+		},
+	})
+
 	// Create Elasticsearch typed client for flexible querying
 	esClient, err := elasticsearch.NewTypedClient(elasticsearch.Config{
 		Addresses: []string{"http://localhost:9200"},
@@ -276,6 +322,22 @@ query {
         comment
       }
     }
+  }
+}
+
+# Public API query with limited fields (FieldFilter example):
+query {
+  publicProducts(limit: 10) {
+    hits {
+      id
+      name
+      price
+      category
+      brand
+      description
+      # Note: internal fields like tags, active, etc. are not available
+    }
+    totalCount
   }
 }
 

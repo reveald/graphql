@@ -73,10 +73,31 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 		fields := graphql.Fields{}
 
 		for fieldName, field := range queryConfig.Mapping.Properties {
-			gqlField, err := sg.convertFieldToGraphQL(field)
-			if err != nil {
-				return nil
+			// Apply field filter
+			if !sg.shouldIncludeField(fieldName, queryConfig.FieldFilter) {
+				continue
 			}
+
+			// Check for field type override
+			var gqlField *graphql.Field
+			if queryConfig.FieldTypeOverrides != nil {
+				if overrideType, ok := queryConfig.FieldTypeOverrides[fieldName]; ok {
+					// Use the override type
+					gqlField = &graphql.Field{
+						Type: overrideType,
+					}
+				}
+			}
+
+			// If no override, convert from ES type
+			if gqlField == nil {
+				var err error
+				gqlField, err = sg.convertFieldToGraphQL(field)
+				if err != nil {
+					return nil
+				}
+			}
+
 			fields[fieldName] = gqlField
 		}
 

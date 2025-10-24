@@ -125,6 +125,14 @@ type QueryConfig struct {
 	// FieldFilter allows specifying which fields to include/exclude from the schema
 	FieldFilter *FieldFilter
 
+	// FieldTypeOverrides allows overriding the GraphQL type for specific fields
+	// Example: map[string]graphql.Output{"id": graphql.NewNonNull(graphql.ID)}
+	// This is useful for:
+	// - Making fields non-nullable (NewNonNull)
+	// - Using GraphQL ID type for identifiers
+	// - Custom scalar types
+	FieldTypeOverrides map[string]graphql.Output
+
 	// AggregationFields specifies which fields should have aggregations in the schema
 	// If nil or empty, no aggregation fields will be generated
 	AggregationFields []string
