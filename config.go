@@ -16,6 +16,12 @@ type FieldExtension struct {
 	// Field is the complete GraphQL field definition including type and resolver
 	// The resolver receives full graphql.ResolveParams with access to parent document via p.Source
 	Field *graphql.Field
+
+	// Directives are federation directives to apply to this field
+	// Map keys are directive names (e.g., "requires", "external")
+	// Map values are directive arguments (e.g., "item { displayName }")
+	// Example: map[string]string{"requires": "item { displayName }"}
+	Directives map[string]string
 }
 
 // TypeExtension defines custom fields to add to a specific generated type
@@ -44,6 +50,13 @@ type CustomTypeWithKeys struct {
 	// When false: Only @key appears in SDL (this subgraph references but doesn't resolve the entity)
 	// Default: false (reference only)
 	Resolvable bool
+
+	// ExternalFields specifies which fields should be marked with @external directive
+	// Used in Federation to indicate fields owned by another subgraph
+	// Examples:
+	//   []string{"displayName"} → displayName: String! @external
+	//   []string{"name", "email"} → name: String @external, email: String @external
+	ExternalFields []string
 }
 
 // Config defines the GraphQL API configuration

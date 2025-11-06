@@ -106,6 +106,14 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 			if typeExt.TypeName == docTypeName {
 				for _, fieldExt := range typeExt.Fields {
 					fields[fieldExt.FieldName] = fieldExt.Field
+
+					// Store field directives if present
+					if len(fieldExt.Directives) > 0 {
+						if sg.fieldDirectives[docTypeName] == nil {
+							sg.fieldDirectives[docTypeName] = make(map[string]map[string]string)
+						}
+						sg.fieldDirectives[docTypeName][fieldExt.FieldName] = fieldExt.Directives
+					}
 				}
 			}
 		}

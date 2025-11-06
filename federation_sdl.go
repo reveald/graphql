@@ -12,7 +12,8 @@ import (
 // with Apollo Federation v2 annotations
 // - sdlEntityKeys: All entities with @key directives (both resolvable and reference-only)
 // - resolvableEntityKeys: Only entities resolvable by this subgraph (included in _Entity union)
-func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys map[string][]string, resolvableEntityKeys map[string][]string) string {
+// - fieldDirectives: Maps type name -> field name -> directive name -> directive args (empty string for no args, e.g., @external)
+func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys map[string][]string, resolvableEntityKeys map[string][]string, fieldDirectives map[string]map[string]map[string]string) string {
 	enableFederation := config.EnableFederation
 	var sdl strings.Builder
 
@@ -20,7 +21,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys ma
 	if enableFederation {
 		sdl.WriteString(`extend schema
   @link(url: "https://specs.apollo.dev/federation/v2.3",
-        import: ["@key", "@shareable"])
+        import: ["@key", "@shareable", "@external", "@requires"])
 
 `)
 
@@ -88,7 +89,10 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys ma
 			// Check if this entity is resolvable by this subgraph
 			_, isResolvable := resolvableEntityKeys[typeName]
 
-			sdl.WriteString(exportObjectType(t, enableFederation, isExtended, keyFieldsList, isResolvable))
+			// Get field directives for this type (if any)
+			typeFieldDirectives := fieldDirectives[typeName]
+
+			sdl.WriteString(exportObjectType(t, enableFederation, isExtended, keyFieldsList, isResolvable, typeFieldDirectives))
 			sdl.WriteString("\n")
 
 		case *graphql.Enum:
@@ -103,7 +107,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys ma
 
 	// Export Query type last
 	if queryType := schema.QueryType(); queryType != nil {
-		sdl.WriteString(exportObjectType(queryType, false, false, nil, true)) // Query is never shareable, extended, or has entity keys
+		sdl.WriteString(exportObjectType(queryType, false, false, nil, true, nil)) // Query is never shareable, extended, has entity keys, or field directives
 		sdl.WriteString("\n")
 	}
 
@@ -111,7 +115,7 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys ma
 }
 
 // exportObjectType exports a GraphQL object type as SDL
-func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool, entityKeyFields []string, isResolvable bool) string {
+func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended bool, entityKeyFields []string, isResolvable bool, typeFieldDirectives map[string]map[string]string) string {
 	var sdl strings.Builder
 
 	// Add description if present (using # comment syntax for types)
@@ -186,7 +190,22 @@ func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended
 
 		// Field declaration
 		fieldType := exportType(field.Type)
-		sdl.WriteString(fmt.Sprintf("  %s: %s\n", fieldName, fieldType))
+		fieldDecl := fmt.Sprintf("  %s: %s", fieldName, fieldType)
+
+		// Add field directives (e.g., @external, @requires)
+		if enableFederation && typeFieldDirectives != nil {
+			if directives, hasDirectives := typeFieldDirectives[fieldName]; hasDirectives {
+				for directiveName, directiveArgs := range directives {
+					if directiveArgs != "" {
+						fieldDecl += fmt.Sprintf(" @%s(fields: \"%s\")", directiveName, directiveArgs)
+					} else {
+						fieldDecl += fmt.Sprintf(" @%s", directiveName)
+					}
+				}
+			}
+		}
+
+		sdl.WriteString(fieldDecl + "\n")
 	}
 
 	sdl.WriteString("}\n")

@@ -24,6 +24,12 @@ var (
 	// KeyDirective marks an entity with a primary key
 	KeyDirective *graphql.Directive
 
+	// ExternalDirective marks a field as external (owned by another subgraph)
+	ExternalDirective *graphql.Directive
+
+	// RequiresDirective marks a field as requiring other fields to be resolved first
+	RequiresDirective *graphql.Directive
+
 	// AnyScalar is a scalar that can represent any JSON value (for entity representations)
 	AnyScalar *graphql.Scalar
 
@@ -80,6 +86,26 @@ func initFederationDirectives() {
 			},
 		},
 	})
+
+	// @external directive (for fields owned by another subgraph)
+	ExternalDirective = graphql.NewDirective(graphql.DirectiveConfig{
+		Name:        "external",
+		Description: "Marks a field as external (defined and resolved by another subgraph)",
+		Locations:   []string{graphql.DirectiveLocationFieldDefinition},
+	})
+
+	// @requires directive (for fields that need other fields to be fetched first)
+	RequiresDirective = graphql.NewDirective(graphql.DirectiveConfig{
+		Name:        "requires",
+		Description: "Indicates that a field requires other fields to be resolved before it can be resolved",
+		Locations:   []string{graphql.DirectiveLocationFieldDefinition},
+		Args: graphql.FieldConfigArgument{
+			"fields": &graphql.ArgumentConfig{
+				Type:        graphql.NewNonNull(graphql.String),
+				Description: "A selection set of required fields (e.g., 'item { displayName }')",
+			},
+		},
+	})
 }
 
 // GetFederationDirectives returns all federation directives
@@ -89,6 +115,8 @@ func GetFederationDirectives() []*graphql.Directive {
 		ShareableDirective,
 		LinkDirective,
 		KeyDirective,
+		ExternalDirective,
+		RequiresDirective,
 	}
 }
 

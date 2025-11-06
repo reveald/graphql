@@ -45,8 +45,8 @@ func GenerateSchemaSDL(config *Config) (string, error) {
 		return "", fmt.Errorf("failed to generate schema: %w", err)
 	}
 
-	// Export as SDL with entity keys (both SDL and resolvable)
-	sdl := ExportFederationSDL(schema, config, generator.sdlEntityKeys, generator.entityKeys)
+	// Export as SDL with entity keys (both SDL and resolvable) and field directives
+	sdl := ExportFederationSDL(schema, config, generator.sdlEntityKeys, generator.entityKeys, generator.fieldDirectives)
 	return sdl, nil
 }
 

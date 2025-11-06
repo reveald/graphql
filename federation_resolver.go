@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
@@ -16,11 +17,11 @@ import (
 // EntityTypeMapping tracks the configuration for each entity type
 type EntityTypeMapping struct {
 	// For regular queries (using reveald features)
-	QueryName        string
-	QueryConfig      *QueryConfig
-	RevealdEndpoint  *reveald.Endpoint
-	ArgumentReader   *ArgumentReader
-	UseFeatureFlow   bool
+	QueryName       string
+	QueryConfig     *QueryConfig
+	RevealdEndpoint *reveald.Endpoint
+	ArgumentReader  *ArgumentReader
+	UseFeatureFlow  bool
 
 	// For precompiled queries (using ES typed API)
 	PrecompiledConfig *PrecompiledQueryConfig
@@ -115,8 +116,21 @@ func (er *EntityResolver) resolveEntity(repr any, params graphql.ResolveParams) 
 		return nil, err
 	}
 
-	// Add __typename to the result
+	// Merge representation fields into entity (for @requires directive support)
+	// The gateway provides additional data in the representation that needs to be available to resolvers
 	if entity != nil {
+		for key, value := range fields {
+			// Don't overwrite key fields that came from ES
+			isKeyField := slices.Contains(typeMapping.EntityKeys, key)
+			// Don't overwrite __typename
+			if key == "__typename" {
+				continue
+			}
+			// Merge non-key fields from representation (e.g., enriched data from @requires)
+			if !isKeyField {
+				entity[key] = value
+			}
+		}
 		entity["__typename"] = typename
 	}
 
@@ -257,7 +271,6 @@ func (er *EntityResolver) resolveWithTypedQuery(typeMapping *EntityTypeMapping, 
 			Query: finalQuery,
 		}).
 		Do(ctx)
-
 	if err != nil {
 		return nil, fmt.Errorf("ES query failed: %w", err)
 	}

@@ -16,15 +16,16 @@ type schemaRef struct {
 
 // SchemaGenerator generates GraphQL schemas from Elasticsearch mappings
 type SchemaGenerator struct {
-	config          *Config
-	typeCache       map[string]*graphql.Object
-	resolverBuilder *ResolverBuilder
-	bucketType      *graphql.Object
-	paginationType  *graphql.Object
-	entityKeys      map[string][]string    // Maps type name to entity key fields for RESOLVABLE entities (included in _Entity union)
-	sdlEntityKeys   map[string][]string    // Maps type name to entity key fields for SDL @key directives (all entities, resolvable or not)
-	entityResolver  *EntityResolver        // Resolver for _entities query
-	schemaRef       *schemaRef             // Reference to the generated schema (for _service query)
+	config           *Config
+	typeCache        map[string]*graphql.Object
+	resolverBuilder  *ResolverBuilder
+	bucketType       *graphql.Object
+	paginationType   *graphql.Object
+	entityKeys       map[string][]string                       // Maps type name to entity key fields for RESOLVABLE entities (included in _Entity union)
+	sdlEntityKeys    map[string][]string                       // Maps type name to entity key fields for SDL @key directives (all entities, resolvable or not)
+	fieldDirectives  map[string]map[string]map[string]string   // Maps type name -> field name -> directive name -> directive args (empty string for directives without args like @external)
+	entityResolver   *EntityResolver                           // Resolver for _entities query
+	schemaRef        *schemaRef                                // Reference to the generated schema (for _service query)
 }
 
 // NewSchemaGenerator creates a new schema generator
@@ -35,6 +36,7 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 		resolverBuilder: resolverBuilder,
 		entityKeys:      make(map[string][]string),
 		sdlEntityKeys:   make(map[string][]string),
+		fieldDirectives: make(map[string]map[string]map[string]string),
 		schemaRef:       &schemaRef{},
 	}
 
@@ -60,6 +62,19 @@ func NewSchemaGenerator(config *Config, resolverBuilder *ResolverBuilder) *Schem
 			// Only add to entityKeys if resolvable (for _Entity union)
 			if customTypeWithKeys.Resolvable {
 				sg.entityKeys[typeName] = customTypeWithKeys.EntityKeys
+			}
+		}
+
+		// Register external fields as directives if provided
+		if len(customTypeWithKeys.ExternalFields) > 0 {
+			if sg.fieldDirectives[typeName] == nil {
+				sg.fieldDirectives[typeName] = make(map[string]map[string]string)
+			}
+			for _, fieldName := range customTypeWithKeys.ExternalFields {
+				if sg.fieldDirectives[typeName][fieldName] == nil {
+					sg.fieldDirectives[typeName][fieldName] = make(map[string]string)
+				}
+				sg.fieldDirectives[typeName][fieldName]["external"] = "" // @external has no arguments
 			}
 		}
 	}
@@ -108,6 +123,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		config := sg.config
 		sdlEntityKeys := sg.sdlEntityKeys       // All entities with @key directives
 		resolvableEntityKeys := sg.entityKeys   // Only resolvable entities
+		fieldDirectives := sg.fieldDirectives   // Field-level directives (e.g., @requires, @external)
 
 		// Add _service query
 		queryFields["_service"] = &graphql.Field{
@@ -118,7 +134,7 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 				if schemaRef.schema == nil {
 					return nil, fmt.Errorf("schema not yet initialized")
 				}
-				sdl := ExportFederationSDL(*schemaRef.schema, config, sdlEntityKeys, resolvableEntityKeys)
+				sdl := ExportFederationSDL(*schemaRef.schema, config, sdlEntityKeys, resolvableEntityKeys, fieldDirectives)
 				return map[string]any{
 					"sdl": sdl,
 				}, nil
@@ -342,6 +358,14 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 		if typeExt.TypeName == typeName {
 			for _, fieldExt := range typeExt.Fields {
 				fields[fieldExt.FieldName] = fieldExt.Field
+
+				// Store field directives if present
+				if len(fieldExt.Directives) > 0 {
+					if sg.fieldDirectives[typeName] == nil {
+						sg.fieldDirectives[typeName] = make(map[string]map[string]string)
+					}
+					sg.fieldDirectives[typeName][fieldExt.FieldName] = fieldExt.Directives
+				}
 			}
 		}
 	}
