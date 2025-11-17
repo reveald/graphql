@@ -270,6 +270,15 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 		return nil, err
 	}
 
+	// Use custom result type name if provided, otherwise generate from query name
+	resultTypeName := queryConfig.ResultTypeName
+	if resultTypeName == "" {
+		resultTypeName = fmt.Sprintf("%sResult", capitalize(queryName))
+	}
+
+	// Get base name by removing "Result" suffix for related types
+	baseName := strings.TrimSuffix(resultTypeName, "Result")
+
 	fields := graphql.Fields{
 		"hits": &graphql.Field{
 			Type:        graphql.NewList(docType),
@@ -283,7 +292,7 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 
 	// Add aggregations if enabled
 	if queryConfig.EnableAggregations {
-		aggType := sg.generateAggregationsType(queryName, queryConfig, mapping)
+		aggType := sg.generateAggregationsType(baseName, queryConfig, mapping)
 		if aggType != nil {
 			fields["aggregations"] = &graphql.Field{
 				Type:        aggType,
@@ -301,7 +310,7 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 	}
 
 	return graphql.NewObject(graphql.ObjectConfig{
-		Name:   fmt.Sprintf("%sResult", capitalize(queryName)),
+		Name:   resultTypeName,
 		Fields: fields,
 	}), nil
 }
@@ -541,7 +550,14 @@ func (sg *SchemaGenerator) generateQueryArguments(queryName string, queryConfig 
 		// Try to extract sort options from features and create enum
 		sortOptions := extractSortOptions(queryConfig.Features)
 		if len(sortOptions) > 0 {
-			sortEnum := sg.createSortEnum(queryName, sortOptions)
+			// Calculate base name for sort enum (same logic as result type)
+			resultTypeName := queryConfig.ResultTypeName
+			if resultTypeName == "" {
+				resultTypeName = fmt.Sprintf("%sResult", capitalize(queryName))
+			}
+			baseName := strings.TrimSuffix(resultTypeName, "Result")
+
+			sortEnum := sg.createSortEnum(baseName, sortOptions)
 			args["sort"] = &graphql.ArgumentConfig{
 				Type:        sortEnum,
 				Description: "Sort option",
@@ -669,7 +685,8 @@ func extractAggregationFields(features []reveald.Feature) []string {
 }
 
 // createSortEnum creates a GraphQL enum type from sort options
-func (sg *SchemaGenerator) createSortEnum(queryName string, sortOptions []string) *graphql.Enum {
+// baseName is the base name for the enum (e.g., "OrderSearch" for "OrderSearchSortOption")
+func (sg *SchemaGenerator) createSortEnum(baseName string, sortOptions []string) *graphql.Enum {
 	if len(sortOptions) == 0 {
 		return nil
 	}
@@ -685,7 +702,7 @@ func (sg *SchemaGenerator) createSortEnum(queryName string, sortOptions []string
 	}
 
 	return graphql.NewEnum(graphql.EnumConfig{
-		Name:   fmt.Sprintf("%sSortOption", capitalize(queryName)),
+		Name:   fmt.Sprintf("%sSortOption", baseName),
 		Values: enumValues,
 	})
 }
@@ -741,7 +758,8 @@ func (sg *SchemaGenerator) createPaginationType() *graphql.Object {
 }
 
 // generateAggregationsType creates the aggregations type
-func (sg *SchemaGenerator) generateAggregationsType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) *graphql.Object {
+// baseName is the base name for the type (e.g., "OrderSearch" for "OrderSearchAggregations")
+func (sg *SchemaGenerator) generateAggregationsType(baseName string, queryConfig *QueryConfig, mapping *IndexMapping) *graphql.Object {
 	aggFields := graphql.Fields{}
 
 	// First try to get aggregation fields from configured Features
@@ -793,7 +811,7 @@ func (sg *SchemaGenerator) generateAggregationsType(queryName string, queryConfi
 	}
 
 	return graphql.NewObject(graphql.ObjectConfig{
-		Name:   fmt.Sprintf("%sAggregations", capitalize(queryName)),
+		Name:   fmt.Sprintf("%sAggregations", baseName),
 		Fields: aggFields,
 	})
 }

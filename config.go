@@ -179,6 +179,11 @@ type QueryConfig struct {
 	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
 	// Example: "Lead" instead of "TestLeadsDocument"
 	HitsTypeName string
+
+	// ResultTypeName is an optional custom name for the result type
+	// If not provided, defaults to "{QueryName}Result" (e.g., "OrdersResult")
+	// Example: "OrderSearchResult" instead of "OrdersResult"
+	ResultTypeName string
 }
 
 // FieldFilter defines which fields to include or exclude
