@@ -190,7 +190,19 @@ func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended
 
 		// Field declaration
 		fieldType := exportType(field.Type)
-		fieldDecl := fmt.Sprintf("  %s: %s", fieldName, fieldType)
+
+		// Build field arguments if present
+		var argsStr string
+		if len(field.Args) > 0 {
+			var argParts []string
+			for _, arg := range field.Args {
+				argType := exportType(arg.Type)
+				argParts = append(argParts, fmt.Sprintf("%s: %s", arg.Name(), argType))
+			}
+			argsStr = fmt.Sprintf("(%s)", strings.Join(argParts, ", "))
+		}
+
+		fieldDecl := fmt.Sprintf("  %s%s: %s", fieldName, argsStr, fieldType)
 
 		// Add field directives (e.g., @external, @requires)
 		if enableFederation && typeFieldDirectives != nil {
