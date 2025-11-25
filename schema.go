@@ -264,10 +264,16 @@ func (sg *SchemaGenerator) generateQueryField(queryName string, queryConfig *Que
 
 // generateResultType creates the result type for a query
 func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *QueryConfig, mapping *IndexMapping) (*graphql.Object, error) {
-	// Create the document type
-	docType, err := sg.generateDocumentType(queryName, queryConfig, mapping)
-	if err != nil {
-		return nil, err
+	// Determine the hits type - use custom HitsType if provided, otherwise generate document type
+	var hitsType graphql.Output
+	if queryConfig.HitsType != nil {
+		hitsType = queryConfig.HitsType
+	} else {
+		docType, err := sg.generateDocumentType(queryName, queryConfig, mapping)
+		if err != nil {
+			return nil, err
+		}
+		hitsType = docType
 	}
 
 	// Use custom result type name if provided, otherwise generate from query name
@@ -281,7 +287,7 @@ func (sg *SchemaGenerator) generateResultType(queryName string, queryConfig *Que
 
 	fields := graphql.Fields{
 		"hits": &graphql.Field{
-			Type:        graphql.NewList(docType),
+			Type:        graphql.NewList(hitsType),
 			Description: "The search results",
 		},
 		"totalCount": &graphql.Field{

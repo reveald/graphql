@@ -102,6 +102,10 @@ func ExportFederationSDL(schema graphql.Schema, config *Config, sdlEntityKeys ma
 		case *graphql.InputObject:
 			sdl.WriteString(exportInputObjectType(t))
 			sdl.WriteString("\n")
+
+		case *graphql.Interface:
+			sdl.WriteString(exportInterfaceType(t, enableFederation, sdlEntityKeys[typeName]))
+			sdl.WriteString("\n")
 		}
 	}
 
@@ -160,12 +164,23 @@ func exportObjectType(objType *graphql.Object, enableFederation bool, isExtended
 		directives = " " + directives
 	}
 
+	// Build implements clause if type implements interfaces
+	var implementsClause string
+	interfaces := objType.Interfaces()
+	if len(interfaces) > 0 {
+		var interfaceNames []string
+		for _, iface := range interfaces {
+			interfaceNames = append(interfaceNames, iface.Name())
+		}
+		implementsClause = " implements " + strings.Join(interfaceNames, " & ")
+	}
+
 	if isExtended {
 		// Use "extend type" for types defined in other subgraphs
-		typeDecl = fmt.Sprintf("extend type %s%s {\n", typeName, directives)
+		typeDecl = fmt.Sprintf("extend type %s%s%s {\n", typeName, implementsClause, directives)
 	} else {
 		// Use "type" for types owned by this subgraph
-		typeDecl = fmt.Sprintf("type %s%s {\n", typeName, directives)
+		typeDecl = fmt.Sprintf("type %s%s%s {\n", typeName, implementsClause, directives)
 	}
 
 	sdl.WriteString(typeDecl)
@@ -245,6 +260,52 @@ func exportEnumType(enumType *graphql.Enum) string {
 	return sdl.String()
 }
 
+// exportInterfaceType exports a GraphQL interface type as SDL
+func exportInterfaceType(interfaceType *graphql.Interface, enableFederation bool, entityKeyFields []string) string {
+	var sdl strings.Builder
+
+	if interfaceType.Description() != "" {
+		sdl.WriteString(fmt.Sprintf("# %s\n", interfaceType.Description()))
+	}
+
+	// Build directives
+	var directives string
+	if enableFederation && len(entityKeyFields) > 0 {
+		for _, keyField := range entityKeyFields {
+			if directives != "" {
+				directives += " "
+			}
+			directives += fmt.Sprintf("@key(fields: \"%s\", resolvable: false)", keyField)
+		}
+	}
+
+	if directives != "" {
+		directives = " " + directives
+	}
+
+	sdl.WriteString(fmt.Sprintf("interface %s%s {\n", interfaceType.Name(), directives))
+
+	// Export fields
+	fields := interfaceType.Fields()
+	var fieldNames []string
+	for fieldName := range fields {
+		fieldNames = append(fieldNames, fieldName)
+	}
+	sort.Strings(fieldNames)
+
+	for _, fieldName := range fieldNames {
+		field := fields[fieldName]
+		if field.Description != "" {
+			sdl.WriteString(fmt.Sprintf("  \"\"\"%s\"\"\"\n", field.Description))
+		}
+		fieldType := exportType(field.Type)
+		sdl.WriteString(fmt.Sprintf("  %s: %s\n", fieldName, fieldType))
+	}
+
+	sdl.WriteString("}\n")
+	return sdl.String()
+}
+
 // exportInputObjectType exports a GraphQL input object type as SDL
 func exportInputObjectType(inputType *graphql.InputObject) string {
 	var sdl strings.Builder
@@ -280,6 +341,8 @@ func exportType(t graphql.Type) string {
 	case *graphql.List:
 		return fmt.Sprintf("[%s]", exportType(typ.OfType))
 	case *graphql.Object:
+		return typ.Name()
+	case *graphql.Interface:
 		return typ.Name()
 	case *graphql.Scalar:
 		return typ.Name()

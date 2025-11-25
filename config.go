@@ -178,7 +178,14 @@ type QueryConfig struct {
 	// HitsTypeName is an optional custom name for the document type returned in the hits field
 	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
 	// Example: "Lead" instead of "TestLeadsDocument"
+	// Note: Ignored if HitsType is set
 	HitsTypeName string
+
+	// HitsType is an optional custom GraphQL type for the hits field
+	// When set, the hits field will use this type instead of generating a document type
+	// Useful for returning interfaces or union types for federation
+	// Example: Use a Party interface that resolves to Contact or Business
+	HitsType graphql.Output
 
 	// ResultTypeName is an optional custom name for the result type
 	// If not provided, defaults to "{QueryName}Result" (e.g., "OrdersResult")
