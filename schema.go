@@ -110,6 +110,16 @@ func (sg *SchemaGenerator) Generate() (graphql.Schema, error) {
 		queryFields[queryName] = field
 	}
 
+	// Add raw queries (backend-agnostic, custom resolver)
+	for queryName, queryConfig := range sg.config.RawQueries {
+		queryFields[queryName] = &graphql.Field{
+			Type:        queryConfig.ResultType,
+			Description: queryConfig.Description,
+			Args:        queryConfig.Arguments,
+			Resolve:     queryConfig.Resolver,
+		}
+	}
+
 	// Add federation queries if enabled
 	if sg.config.EnableFederation {
 		// Initialize federation types

@@ -59,6 +59,22 @@ type CustomTypeWithKeys struct {
 	ExternalFields []string
 }
 
+// RawQueryConfig defines a query with a custom resolver, independent of the ES backend.
+// This allows consumers to register queries backed by any data source (e.g., Typesense).
+type RawQueryConfig struct {
+	// ResultType is the GraphQL object type returned by this query
+	ResultType *graphql.Object
+
+	// Arguments defines the GraphQL input arguments for this query
+	Arguments graphql.FieldConfigArgument
+
+	// Resolver is the custom resolver function
+	Resolver graphql.FieldResolveFn
+
+	// Description is an optional description for the GraphQL schema
+	Description string
+}
+
 // Config defines the GraphQL API configuration
 type Config struct {
 	// Queries maps GraphQL query names to their configuration
@@ -66,6 +82,9 @@ type Config struct {
 
 	// PrecompiledQueries maps GraphQL query names to precompiled query configurations
 	PrecompiledQueries map[string]*PrecompiledQueryConfig
+
+	// RawQueries maps GraphQL query names to raw (backend-agnostic) query configurations
+	RawQueries map[string]*RawQueryConfig
 
 	// EnableFederation enables Apollo Federation v2 support
 	// When enabled:
@@ -244,6 +263,16 @@ func WithPrecompiledQuery(name string, queryConfig *PrecompiledQueryConfig) Conf
 	}
 }
 
+// WithRawQuery adds a backend-agnostic query with a custom resolver
+func WithRawQuery(name string, queryConfig *RawQueryConfig) ConfigOption {
+	return func(c *Config) {
+		if c.RawQueries == nil {
+			c.RawQueries = make(map[string]*RawQueryConfig)
+		}
+		c.RawQueries[name] = queryConfig
+	}
+}
+
 // WithTypeExtension adds custom fields to a generated GraphQL type
 // Example: Add "reviews" field to ProductDocument type
 func WithTypeExtension(typeName string, fields []FieldExtension) ConfigOption {
@@ -282,6 +311,7 @@ func NewConfig(opts ...ConfigOption) *Config {
 	config := &Config{
 		Queries:            make(map[string]*QueryConfig),
 		PrecompiledQueries: make(map[string]*PrecompiledQueryConfig),
+		RawQueries:         make(map[string]*RawQueryConfig),
 	}
 
 	// Apply options
