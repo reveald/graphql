@@ -621,80 +621,168 @@ func extractAggregationFields(features []reveald.Feature) []string {
 	seenFields := make(map[string]bool)
 
 	for _, feature := range features {
-		val := reflect.ValueOf(feature)
-		if val.Kind() == reflect.Ptr {
-			val = val.Elem()
-		}
+		fields := extractAggregationFieldsFromFeature(feature, seenFields)
+		aggFields = append(aggFields, fields...)
+	}
 
-		// Special handling for features with both "Prefix" and "Property" fields
-		// (like MultiNestedDynamicFilterFeature)
-		propField := val.FieldByName("Property")
-		prefField := val.FieldByName("Prefix")
-		subaggsField := val.FieldByName("subaggs")
+	return aggFields
+}
 
-		if propField.IsValid() && prefField.IsValid() &&
-			propField.Kind() == reflect.String && prefField.Kind() == reflect.String {
+// extractAggregationFieldsFromFeature extracts field names from a single feature,
+// recursively handling wrapper features that contain nested features
+func extractAggregationFieldsFromFeature(feature reveald.Feature, seenFields map[string]bool) []string {
+	var aggFields []string
 
-			property := propField.String()
-			prefix := prefField.String()
+	val := reflect.ValueOf(feature)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
 
-			// The actual aggregation name is prefix + property
-			fieldName := prefix + property
-
-			if !seenFields[fieldName] {
-				aggFields = append(aggFields, fieldName)
-				seenFields[fieldName] = true
-			}
-
-			// Also extract sub-aggregations
-			if subaggsField.IsValid() && subaggsField.Kind() == reflect.Slice {
-				for i := 0; i < subaggsField.Len(); i++ {
-					subaggElem := subaggsField.Index(i)
-					aggFieldField := subaggElem.FieldByName("AggField")
-
-					if aggFieldField.IsValid() && aggFieldField.Kind() == reflect.String {
-						subAggName := aggFieldField.String()
-
-						// Add if not duplicate (subagg names already have prefix applied)
-						if !seenFields[subAggName] {
-							aggFields = append(aggFields, subAggName)
-							seenFields[subAggName] = true
-						}
-					}
+	// Check for wrapper features with nested features (like NestedDocumentWrapper)
+	featuresField := val.FieldByName("features")
+	if featuresField.IsValid() && featuresField.Kind() == reflect.Slice && featuresField.Len() > 0 {
+		for i := 0; i < featuresField.Len(); i++ {
+			elem := featuresField.Index(i)
+			// Try to get the interface value - this works for exported fields
+			if elem.CanInterface() {
+				if wrappedFeature, ok := elem.Interface().(reveald.Feature); ok {
+					nestedFields := extractAggregationFieldsFromFeature(wrappedFeature, seenFields)
+					aggFields = append(aggFields, nestedFields...)
+					continue
 				}
 			}
-
-			continue
+			// For unexported fields, recursively extract from the reflected value
+			nestedFields := extractAggregationFieldsFromValue(elem, seenFields)
+			aggFields = append(aggFields, nestedFields...)
 		}
+		return aggFields
+	}
 
-		// Try to find a "property" field (used by most features)
-		var fieldName string
-		propertyField := val.FieldByName("property")
-		if propertyField.IsValid() && propertyField.Kind() == reflect.String {
-			fieldName = propertyField.String()
-		}
+	// Special handling for features with both "Prefix" and "Property" fields
+	// (like MultiNestedDynamicFilterFeature)
+	propField := val.FieldByName("Property")
+	prefField := val.FieldByName("Prefix")
+	subaggsField := val.FieldByName("subaggs")
 
-		// Also check for "field" (some features might use this)
-		if fieldName == "" {
-			fieldField := val.FieldByName("field")
-			if fieldField.IsValid() && fieldField.Kind() == reflect.String {
-				fieldName = fieldField.String()
-			}
-		}
+	if propField.IsValid() && prefField.IsValid() &&
+		propField.Kind() == reflect.String && prefField.Kind() == reflect.String {
 
-		// Also check for "name" (used by some features like RangeSlotFeature)
-		if fieldName == "" {
-			nameField := val.FieldByName("name")
-			if nameField.IsValid() && nameField.Kind() == reflect.String {
-				fieldName = nameField.String()
-			}
-		}
+		property := propField.String()
+		prefix := prefField.String()
 
-		// Add to list if we found a field name and haven't seen it before
-		if fieldName != "" && !seenFields[fieldName] {
+		// The actual aggregation name is prefix + property
+		fieldName := prefix + property
+
+		if !seenFields[fieldName] {
 			aggFields = append(aggFields, fieldName)
 			seenFields[fieldName] = true
 		}
+
+		// Also extract sub-aggregations
+		if subaggsField.IsValid() && subaggsField.Kind() == reflect.Slice {
+			for i := 0; i < subaggsField.Len(); i++ {
+				subaggElem := subaggsField.Index(i)
+				aggFieldField := subaggElem.FieldByName("AggField")
+
+				if aggFieldField.IsValid() && aggFieldField.Kind() == reflect.String {
+					subAggName := aggFieldField.String()
+
+					// Add if not duplicate (subagg names already have prefix applied)
+					if !seenFields[subAggName] {
+						aggFields = append(aggFields, subAggName)
+						seenFields[subAggName] = true
+					}
+				}
+			}
+		}
+
+		return aggFields
+	}
+
+	// Try to find a "property" field (used by most features)
+	var fieldName string
+	propertyField := val.FieldByName("property")
+	if propertyField.IsValid() && propertyField.Kind() == reflect.String {
+		fieldName = propertyField.String()
+	}
+
+	// Also check for "field" (some features might use this)
+	if fieldName == "" {
+		fieldField := val.FieldByName("field")
+		if fieldField.IsValid() && fieldField.Kind() == reflect.String {
+			fieldName = fieldField.String()
+		}
+	}
+
+	// Also check for "name" (used by some features like RangeSlotFeature)
+	if fieldName == "" {
+		nameField := val.FieldByName("name")
+		if nameField.IsValid() && nameField.Kind() == reflect.String {
+			fieldName = nameField.String()
+		}
+	}
+
+	// Add to list if we found a field name and haven't seen it before
+	if fieldName != "" && !seenFields[fieldName] {
+		aggFields = append(aggFields, fieldName)
+		seenFields[fieldName] = true
+	}
+
+	return aggFields
+}
+
+// extractAggregationFieldsFromValue extracts field names from a reflect.Value directly,
+// useful when the value comes from an unexported slice field
+func extractAggregationFieldsFromValue(val reflect.Value, seenFields map[string]bool) []string {
+	var aggFields []string
+
+	// Dereference pointers and interfaces until we get to the concrete type
+	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+		if val.IsNil() {
+			return aggFields
+		}
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return aggFields
+	}
+
+	// Check for nested features field
+	featuresField := val.FieldByName("features")
+	if featuresField.IsValid() && featuresField.Kind() == reflect.Slice && featuresField.Len() > 0 {
+		for i := 0; i < featuresField.Len(); i++ {
+			elem := featuresField.Index(i)
+			nestedFields := extractAggregationFieldsFromValue(elem, seenFields)
+			aggFields = append(aggFields, nestedFields...)
+		}
+		return aggFields
+	}
+
+	// Try to find property/field/name fields
+	var fieldName string
+	propertyField := val.FieldByName("property")
+	if propertyField.IsValid() && propertyField.Kind() == reflect.String {
+		fieldName = propertyField.String()
+	}
+
+	if fieldName == "" {
+		fieldField := val.FieldByName("field")
+		if fieldField.IsValid() && fieldField.Kind() == reflect.String {
+			fieldName = fieldField.String()
+		}
+	}
+
+	if fieldName == "" {
+		nameField := val.FieldByName("name")
+		if nameField.IsValid() && nameField.Kind() == reflect.String {
+			fieldName = nameField.String()
+		}
+	}
+
+	if fieldName != "" && !seenFields[fieldName] {
+		aggFields = append(aggFields, fieldName)
+		seenFields[fieldName] = true
 	}
 
 	return aggFields
