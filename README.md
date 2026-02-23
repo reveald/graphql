@@ -30,7 +30,7 @@ The library does not work without an active Elasticsearch cluster and reveald ba
 ## Installation
 
 ```bash
-go get github.com/wayke-se/reveald-graphql
+go get github.com/reveald/graphql
 ```
 
 ## Quick Start
@@ -71,7 +71,7 @@ import (
     "net/http"
     "os"
 
-    revealdgraphql "github.com/wayke-se/reveald-graphql"
+    revealdgraphql "github.com/reveald/graphql"
     "github.com/reveald/reveald/v2"
     "github.com/reveald/reveald/v2/featureset"
 )
@@ -116,7 +116,7 @@ Open `http://localhost:8080/graphql`:
 query {
   searchProducts(
     category: ["electronics"]
-    sort: price_desc  # Auto-complete from enum!
+    sort: price_desc # Auto-complete from enum!
     limit: 10
   ) {
     hits {
@@ -127,8 +127,14 @@ query {
     }
     totalCount
     aggregations {
-      category { value count }
-      brand { value count }
+      category {
+        value
+        count
+      }
+      brand {
+        value
+        count
+      }
     }
     pagination {
       offset
@@ -154,6 +160,7 @@ Features: []reveald.Feature{
 ```
 
 The GraphQL schema will automatically include:
+
 ```graphql
 type Aggregations {
   category: [Bucket!]
@@ -175,6 +182,7 @@ featureset.NewSortingFeature("sort",
 ```
 
 Generates:
+
 ```graphql
 enum SearchProductsSortOption {
   price_asc
@@ -192,6 +200,7 @@ You get **full autocomplete** in GraphiQL!
 ### Nested Fields
 
 Nested object fields are automatically converted:
+
 - ES field: `vehicle.manufacturer` → GraphQL: `vehicle_manufacturer`
 - ES field: `ad.price` → GraphQL: `ad_price`
 
@@ -206,16 +215,16 @@ query {
   searchVehicles {
     aggregations {
       processes_tasks_process {
-        value          # "Iordningställande"
-        count          # 191
-        filterValue    # "Iordningställande" (ready to use for filtering)
+        value # "Iordningställande"
+        count # 191
+        filterValue # "Iordningställande" (ready to use for filtering)
         buckets {
-          value        # "Förkalkyl"
-          count        # 180
-          filterValue  # "Iordningställande>Förkalkyl" (full hierarchical path)
+          value # "Förkalkyl"
+          count # 180
+          filterValue # "Iordningställande>Förkalkyl" (full hierarchical path)
           buckets {
-            value        # "urn:pf:task:state:completed"
-            filterValue  # "Iordningställande>Förkalkyl>urn:pf:task:state:completed"
+            value # "urn:pf:task:state:completed"
+            filterValue # "Iordningställande>Förkalkyl>urn:pf:task:state:completed"
           }
         }
       }
@@ -228,9 +237,7 @@ Use the `filterValue` directly for filtering:
 
 ```graphql
 query {
-  searchVehicles(
-    processes_tasks_process: ["Iordningställande>Förkalkyl"]
-  ) {
+  searchVehicles(processes_tasks_process: ["Iordningställande>Förkalkyl"]) {
     totalCount
   }
 }
@@ -238,22 +245,24 @@ query {
 
 ## Type Mappings
 
-| Elasticsearch Type | GraphQL Type |
-|-------------------|--------------|
-| text, keyword     | String       |
-| long, integer, short, byte | Int |
-| double, float     | Float        |
-| boolean           | Boolean      |
-| date              | String (ISO8601) |
-| object            | Object       |
-| nested            | [Object]     |
+| Elasticsearch Type         | GraphQL Type     |
+| -------------------------- | ---------------- |
+| text, keyword              | String           |
+| long, integer, short, byte | Int              |
+| double, float              | Float            |
+| boolean                    | Boolean          |
+| date                       | String (ISO8601) |
+| object                     | Object           |
+| nested                     | [Object]         |
 
 ## Examples
 
 The repository includes three production-ready examples:
 
 ### Products Example (`examples/`)
+
 Basic e-commerce search with:
+
 - Product filtering (category, brand, tags)
 - Price ranges
 - Static filters
@@ -397,28 +406,35 @@ query {
           { range: { field: "price", gte: 100, lte: 1000 } }
           { terms: { field: "category", values: ["electronics", "computers"] } }
         ]
-        should: [
-          { match: { field: "description", query: "gaming" } }
-        ]
+        should: [{ match: { field: "description", query: "gaming" } }]
       }
     }
     aggs: [
       {
-        name: "brands",
+        name: "brands"
         terms: { field: "brand.keyword", size: 20 }
-        aggs: [
-          { name: "avg_price", avg: { field: "price" } }
-        ]
+        aggs: [{ name: "avg_price", avg: { field: "price" } }]
       }
       { name: "price_ranges", histogram: { field: "price", interval: 100 } }
       { name: "price_stats", stats: { field: "price" } }
     ]
   ) {
-    hits { id name price brand }
+    hits {
+      id
+      name
+      price
+      brand
+    }
     totalCount
     aggregations {
-      brands { value count }
-      price_ranges { value count }
+      brands {
+        value
+        count
+      }
+      price_ranges {
+        value
+        count
+      }
     }
   }
 }
@@ -445,6 +461,7 @@ query {
 ### Root Query for Static Filtering
 
 The `RootQuery` field lets you apply base filters that are always merged with user queries using a bool must clause. Perfect for:
+
 - Multi-tenant isolation
 - Soft-delete filtering
 - Access control
@@ -463,7 +480,10 @@ query {
     price_min: 100
     price_max: 1000
   ) {
-    hits { name price }
+    hits {
+      name
+      price
+    }
   }
 }
 ```
@@ -473,7 +493,9 @@ query {
 ```graphql
 query {
   searchProducts(limit: 20, offset: 40) {
-    hits { name }
+    hits {
+      name
+    }
     pagination {
       offset
       limit
@@ -487,8 +509,12 @@ query {
 
 ```graphql
 query {
-  searchProducts(sort: price_desc) {  # Autocomplete!
-    hits { name price }
+  searchProducts(sort: price_desc) {
+    # Autocomplete!
+    hits {
+      name
+      price
+    }
   }
 }
 ```
@@ -502,8 +528,9 @@ query {
       tasks_process {
         value
         count
-        filterValue  # Use this for filtering
-        buckets {    # Nested sub-aggregations
+        filterValue # Use this for filtering
+        buckets {
+          # Nested sub-aggregations
           value
           count
           filterValue
@@ -536,6 +563,7 @@ query {
 ## Zero Configuration Philosophy
 
 The library automatically detects:
+
 - Which fields should have aggregations (from your Features)
 - Which sort options are available (from SortingFeature)
 - Which fields are filterable (from aggregations)
