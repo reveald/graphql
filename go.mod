@@ -1,4 +1,4 @@
-module github.com/wayke-se/reveald-graphql
+module github.com/reveald/graphql
 
 go 1.25.1
 
