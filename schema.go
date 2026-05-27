@@ -551,6 +551,15 @@ func (sg *SchemaGenerator) generateQueryArguments(queryName string, queryConfig 
 		}
 	}
 
+	// HistogramFeature and DateHistogramFeature use range-based filtering (min/max), not list values.
+	// Replace the incorrectly-typed List(String) arg with _min/_max Float args.
+	for fieldName := range extractHistogramFieldNames(queryConfig.Features) {
+		gqlFieldName := strings.ReplaceAll(fieldName, ".", "_")
+		delete(args, gqlFieldName)
+		args[gqlFieldName+"_min"] = &graphql.ArgumentConfig{Type: graphql.Float}
+		args[gqlFieldName+"_max"] = &graphql.ArgumentConfig{Type: graphql.Float}
+	}
+
 	// Add pagination arguments
 	if queryConfig.EnablePagination {
 		args["limit"] = &graphql.ArgumentConfig{
@@ -786,6 +795,55 @@ func extractAggregationFieldsFromValue(val reflect.Value, seenFields map[string]
 	}
 
 	return aggFields
+}
+
+// extractHistogramFieldNames returns the set of field names backed by range-filterable features
+// (HistogramFeature, DateHistogramFeature). These use _min/_max Float args, not list args.
+func extractHistogramFieldNames(features []reveald.Feature) map[string]bool {
+	result := make(map[string]bool)
+	for _, feature := range features {
+		collectHistogramFieldNamesFromValue(reflect.ValueOf(feature), result)
+	}
+	return result
+}
+
+// collectHistogramFieldNamesFromValue works with raw reflect.Value to handle both exported
+// and unexported feature slices (mirrors extractAggregationFieldsFromValue).
+func collectHistogramFieldNamesFromValue(val reflect.Value, result map[string]bool) {
+	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+		if val.IsNil() {
+			return
+		}
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return
+	}
+
+	typeName := val.Type().Name()
+	if typeName == "HistogramFeature" || typeName == "DateHistogramFeature" {
+		if propertyField := val.FieldByName("property"); propertyField.IsValid() && propertyField.Kind() == reflect.String {
+			result[propertyField.String()] = true
+		}
+		return
+	}
+
+	// Recurse into wrapper features (e.g., NestedDocumentWrapper)
+	featuresField := val.FieldByName("features")
+	if !featuresField.IsValid() || featuresField.Kind() != reflect.Slice {
+		return
+	}
+	for i := 0; i < featuresField.Len(); i++ {
+		elem := featuresField.Index(i)
+		if elem.CanInterface() {
+			if wrapped, ok := elem.Interface().(reveald.Feature); ok {
+				collectHistogramFieldNamesFromValue(reflect.ValueOf(wrapped), result)
+				continue
+			}
+		}
+		collectHistogramFieldNamesFromValue(elem, result)
+	}
 }
 
 // createSortEnum creates a GraphQL enum type from sort options

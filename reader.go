@@ -60,52 +60,64 @@ func (ar *ArgumentReader) convertArgument(name string, value any) (reveald.Param
 		}
 	}
 
-	// Handle field filters
-	// Convert underscores back to dots for nested fields (GraphQL doesn't allow dots)
-	// But keep prefixes intact (e.g., processes_tasks_process → processes_tasks.process)
-	esFieldName := name
-
-	// Check if this looks like a prefixed field (prefix_field.subfield pattern)
-	// Common prefixes: processes_, tasks_, insights_
-	if strings.Contains(name, "_") {
-		parts := strings.SplitN(name, "_", 2)
-		if len(parts) == 2 {
-			// Try converting just the second part's underscores to dots
-			possibleESName := parts[0] + "_" + strings.ReplaceAll(parts[1], "_", ".")
-
-			// This handles: processes_tasks_process → processes_tasks.process
-			// But for regular fields, fall through to full conversion
-			esFieldName = possibleESName
-		}
-	}
-
-	// Try to find in mapping with prefixed name first
-	field := ar.mapping.GetField(esFieldName)
-
-	// If not found and contains underscore, try full conversion
-	if field == nil && strings.Contains(name, "_") {
-		esFieldName = strings.ReplaceAll(name, "_", ".")
-		field = ar.mapping.GetField(esFieldName)
-	}
-
-	// If still not found, it might be a virtual field - allow it through
-	// (Features create virtual aggregation names)
-	if field == nil {
-		// For virtual fields, use the parameter name as-is for prefixed fields
-		// or convert underscores to dots for regular nested fields
-		if strings.Contains(name, "_") {
-			parts := strings.SplitN(name, "_", 2)
-			if len(parts) == 2 {
-				esFieldName = parts[0] + "_" + strings.ReplaceAll(parts[1], "_", ".")
+	// Handle range filter suffixes (_min, _max) for histogram/range fields.
+	// These are exposed by the schema for HistogramFeature and DateHistogramFeature fields.
+	// reveald.NewParameter strips the ".min"/".max" suffix and sets the range bounds.
+	for _, suffix := range []string{"_min", "_max"} {
+		if strings.HasSuffix(name, suffix) {
+			baseName := name[:len(name)-len(suffix)]
+			esBaseName := ar.resolveESFieldName(baseName)
+			baseField := ar.mapping.GetField(esBaseName)
+			if baseField != nil && isRangeableFieldType(baseField.Type) {
+				rangeSuffix := "." + suffix[1:] // "_min" → ".min", "_max" → ".max"
+				return reveald.NewParameter(esBaseName+rangeSuffix, fmt.Sprintf("%v", value)), true, nil
 			}
+			break
 		}
 	}
+
+	// Handle field filters: convert GraphQL underscore names back to ES dot-separated paths.
+	esFieldName := ar.resolveESFieldName(name)
+	field := ar.mapping.GetField(esFieldName)
 
 	param, err := ar.convertFieldArgument(esFieldName, value, field)
 	if err != nil {
 		return reveald.Parameter{}, false, err
 	}
 	return param, true, nil
+}
+
+// resolveESFieldName converts a GraphQL argument name (underscores) to an ES field path (dots).
+// It tries the prefix pattern first (carRelations_car.modelYear), then full conversion
+// (carRelations.car.modelYear), falling back to the prefix pattern for virtual fields.
+func (ar *ArgumentReader) resolveESFieldName(name string) string {
+	if !strings.Contains(name, "_") {
+		return name
+	}
+
+	parts := strings.SplitN(name, "_", 2)
+	prefixedName := parts[0] + "_" + strings.ReplaceAll(parts[1], "_", ".")
+	if ar.mapping.GetField(prefixedName) != nil {
+		return prefixedName
+	}
+
+	fullConversion := strings.ReplaceAll(name, "_", ".")
+	if ar.mapping.GetField(fullConversion) != nil {
+		return fullConversion
+	}
+
+	// Virtual field fallback (features may create aggregation names not in the mapping)
+	return prefixedName
+}
+
+// isRangeableFieldType returns true for numeric and date field types that support min/max range filtering.
+func isRangeableFieldType(ft FieldType) bool {
+	switch ft {
+	case FieldTypeInteger, FieldTypeLong, FieldTypeShort, FieldTypeByte,
+		FieldTypeDouble, FieldTypeFloat, FieldTypeDate:
+		return true
+	}
+	return false
 }
 
 // convertFieldArgument converts a field-specific argument
