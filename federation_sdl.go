@@ -350,6 +350,8 @@ func exportType(t graphql.Type) string {
 		return typ.Name()
 	case *graphql.InputObject:
 		return typ.Name()
+	case *graphql.Union:
+		return typ.Name()
 	default:
 		return "String" // Fallback
 	}
