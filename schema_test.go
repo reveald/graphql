@@ -167,3 +167,48 @@ func TestExtractAggregationFields(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractHistogramFieldNames(t *testing.T) {
+	t.Run("detects HistogramFeature at top level", func(t *testing.T) {
+		features := []reveald.Feature{
+			featureset.NewHistogramFeature("price", featureset.WithInterval(50)),
+			featureset.NewDynamicFilterFeature("category"),
+		}
+		result := extractHistogramFieldNames(features)
+		if !result["price"] {
+			t.Error("expected price to be detected as histogram field")
+		}
+		if result["category"] {
+			t.Error("category should not be detected as histogram field")
+		}
+	})
+
+	t.Run("detects DateHistogramFeature at top level", func(t *testing.T) {
+		features := []reveald.Feature{
+			featureset.NewDateHistogramFeature("createdAt", featureset.Month),
+		}
+		result := extractHistogramFieldNames(features)
+		if !result["createdAt"] {
+			t.Error("expected createdAt to be detected as histogram field")
+		}
+	})
+
+	t.Run("detects HistogramFeature nested inside wrapper feature", func(t *testing.T) {
+		features := []reveald.Feature{
+			&mockWrapperFeature{
+				path: "items",
+				features: []reveald.Feature{
+					featureset.NewHistogramFeature("items.price", featureset.WithInterval(100)),
+					featureset.NewDynamicFilterFeature("items.category"),
+				},
+			},
+		}
+		result := extractHistogramFieldNames(features)
+		if !result["items.price"] {
+			t.Error("expected items.price to be detected as histogram field")
+		}
+		if result["items.category"] {
+			t.Error("items.category should not be detected as histogram field")
+		}
+	})
+}
