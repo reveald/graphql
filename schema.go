@@ -369,7 +369,7 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 		// If no override, convert from ES type
 		if gqlField == nil {
 			var err error
-			gqlField, err = sg.convertFieldToGraphQL(field)
+			gqlField, err = sg.convertFieldToGraphQL(field, queryConfig)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert field %s: %w", fieldName, err)
 			}
@@ -426,12 +426,46 @@ func (sg *SchemaGenerator) generateDocumentType(queryName string, queryConfig *Q
 	}
 
 	sg.typeCache[typeName] = docType
+
+	// Register nested entity types (e.g. {"carRelations.car": ["vin"]})
+	for nestedPath, entityKeys := range queryConfig.NestedEntityKeyFields {
+		nestedTypeName := nestedEntityTypeName(nestedPath, queryConfig.NestedEntityTypes)
+		sg.entityKeys[nestedTypeName] = entityKeys
+		sg.sdlEntityKeys[nestedTypeName] = entityKeys
+
+		if sg.config.EnableFederation && sg.entityResolver != nil {
+			sg.entityResolver.RegisterEntityType(nestedTypeName, &EntityTypeMapping{
+				QueryName:   queryName,
+				QueryConfig: queryConfig,
+				Mapping:     mapping,
+				EntityKeys:  entityKeys,
+				NestedPath:  nestedPath,
+			})
+		}
+	}
+
 	return docType, nil
 }
 
+// nestedEntityTypeName returns the GraphQL type name for a nested path, using the
+// NestedEntityTypes override if present, otherwise computing the auto-generated name.
+func nestedEntityTypeName(path string, overrides map[string]string) string {
+	if name, ok := overrides[path]; ok {
+		return name
+	}
+	lastDot := strings.LastIndex(path, ".")
+	if lastDot < 0 {
+		return capitalize(path) + "Object"
+	}
+	parent := path[:lastDot]
+	field := path[lastDot+1:]
+	sanitized := strings.NewReplacer(".", "_", "/", "_", "-", "_").Replace(parent)
+	return capitalize(sanitized) + capitalize(field) + "Object"
+}
+
 // convertFieldToGraphQL converts an ES field to a GraphQL field
-func (sg *SchemaGenerator) convertFieldToGraphQL(field *Field) (*graphql.Field, error) {
-	gqlType, err := sg.esTypeToGraphQLType(field, "")
+func (sg *SchemaGenerator) convertFieldToGraphQL(field *Field, queryConfig *QueryConfig) (*graphql.Field, error) {
+	gqlType, err := sg.esTypeToGraphQLType(field, "", queryConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +476,7 @@ func (sg *SchemaGenerator) convertFieldToGraphQL(field *Field) (*graphql.Field, 
 }
 
 // esTypeToGraphQLType maps Elasticsearch types to GraphQL types
-func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) (graphql.Output, error) {
+func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string, queryConfig *QueryConfig) (graphql.Output, error) {
 	switch field.Type {
 	case FieldTypeText, FieldTypeKeyword:
 		return graphql.String, nil
@@ -460,30 +494,34 @@ func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) 
 			return graphql.String, nil // Generic object as JSON string
 		}
 
-		// Create unique type name using parent path
-		typeName := capitalize(field.Name) + "Object"
-		if parentPath != "" {
-			// Sanitize parent path for GraphQL type name
-			sanitizedPath := strings.ReplaceAll(parentPath, ".", "_")
-			sanitizedPath = strings.ReplaceAll(sanitizedPath, "/", "_")
-			sanitizedPath = strings.ReplaceAll(sanitizedPath, "-", "_")
-			typeName = capitalize(sanitizedPath) + capitalize(field.Name) + "Object"
-		}
-
-		// Check if we already created this type
-		if cachedType, ok := sg.typeCache[typeName]; ok {
-			// Always return as list for objects with properties
-			return graphql.NewList(cachedType), nil
-		}
-
-		objFields := graphql.Fields{}
+		// Build the dot-separated child path (e.g. "carRelations.car")
 		childPath := field.Name
 		if parentPath != "" {
 			childPath = parentPath + "." + field.Name
 		}
 
+		// Create unique type name using parent path, with optional NestedEntityTypes override
+		typeName := capitalize(field.Name) + "Object"
+		if parentPath != "" {
+			sanitizedPath := strings.ReplaceAll(parentPath, ".", "_")
+			sanitizedPath = strings.ReplaceAll(sanitizedPath, "/", "_")
+			sanitizedPath = strings.ReplaceAll(sanitizedPath, "-", "_")
+			typeName = capitalize(sanitizedPath) + capitalize(field.Name) + "Object"
+		}
+		if queryConfig != nil {
+			if override, ok := queryConfig.NestedEntityTypes[childPath]; ok {
+				typeName = override
+			}
+		}
+
+		// Check if we already created this type
+		if cachedType, ok := sg.typeCache[typeName]; ok {
+			return graphql.NewList(cachedType), nil
+		}
+
+		objFields := graphql.Fields{}
 		for propName, prop := range field.Properties {
-			gqlField, err := sg.esTypeToGraphQLType(prop, childPath)
+			gqlField, err := sg.esTypeToGraphQLType(prop, childPath, queryConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -497,7 +535,6 @@ func (sg *SchemaGenerator) esTypeToGraphQLType(field *Field, parentPath string) 
 
 		sg.typeCache[typeName] = objType
 
-		// Always return as list for objects with properties
 		return graphql.NewList(objType), nil
 	default:
 		return graphql.String, nil // Default to string

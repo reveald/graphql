@@ -92,7 +92,7 @@ func (sg *SchemaGenerator) generateSimplePrecompiledResultType(queryName string,
 			// If no override, convert from ES type
 			if gqlField == nil {
 				var err error
-				gqlField, err = sg.convertFieldToGraphQL(field)
+				gqlField, err = sg.convertFieldToGraphQL(field, nil)
 				if err != nil {
 					return nil
 				}
