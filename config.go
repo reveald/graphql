@@ -194,6 +194,18 @@ type QueryConfig struct {
 	//   []string{"id", "email"} → @key(fields: "id") @key(fields: "email")
 	EntityKeyFields []string
 
+	// NestedEntityTypes overrides the auto-generated GraphQL type name for nested object paths.
+	// Key is the dot-separated ES path; value is the desired GraphQL type name.
+	// Example: {"carRelations.car": "Car"} renames CarRelationsCarObject → Car
+	NestedEntityTypes map[string]string
+
+	// NestedEntityKeyFields registers nested object types as Apollo Federation entities.
+	// Key is the dot-separated ES path; value is the list of @key field names.
+	// The path must resolve to a field inside an ES nested type.
+	// Example: {"carRelations.car": ["vin"]}
+	// Requires NestedEntityTypes to specify the GraphQL type name for the same path.
+	NestedEntityKeyFields map[string][]string
+
 	// HitsTypeName is an optional custom name for the document type returned in the hits field
 	// If not provided, defaults to "{IndexName}Document" (e.g., "ProductsDocument")
 	// Example: "Lead" instead of "TestLeadsDocument"

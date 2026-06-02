@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
@@ -29,6 +30,11 @@ type EntityTypeMapping struct {
 	// Common fields
 	Mapping    *IndexMapping
 	EntityKeys []string // The key fields for this entity (e.g., ["id"] or ["id", "conversationId"])
+
+	// NestedPath is set when the entity lives inside an ES nested field.
+	// Format: "<nested_field>.<sub_object>" (e.g. "carRelations.car").
+	// When set, entity resolution uses a nested query with inner_hits instead of a top-level query.
+	NestedPath string
 }
 
 // EntityResolver resolves entities for Apollo Federation
@@ -95,25 +101,31 @@ func (er *EntityResolver) resolveEntity(repr any, params graphql.ResolveParams) 
 		return nil, fmt.Errorf("unknown entity type: %s", typename)
 	}
 
-	// Build ES query from key fields
-	query, err := er.buildEntityQuery(typeMapping, fields)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build entity query: %w", err)
-	}
-
 	// Get HTTP request from context (for RootQueryBuilder and RequestInterceptor)
 	httpReq, _ := getHTTPRequest(params)
 
-	// Execute query based on whether it's a feature-based or precompiled query
+	// Nested entities (e.g. Car inside carRelations) need a different resolution path
 	var entity map[string]any
-	if typeMapping.UseFeatureFlow {
-		entity, err = er.resolveWithFeatures(typeMapping, query, httpReq, params.Context)
+	if typeMapping.NestedPath != "" {
+		var nestedErr error
+		entity, nestedErr = er.resolveNestedEntity(typeMapping, fields, params.Context)
+		if nestedErr != nil {
+			return nil, nestedErr
+		}
 	} else {
-		entity, err = er.resolveWithPrecompiled(typeMapping, query, httpReq, params.Context)
-	}
-
-	if err != nil {
-		return nil, err
+		query, queryErr := er.buildEntityQuery(typeMapping, fields)
+		if queryErr != nil {
+			return nil, fmt.Errorf("failed to build entity query: %w", queryErr)
+		}
+		var resolveErr error
+		if typeMapping.UseFeatureFlow {
+			entity, resolveErr = er.resolveWithFeatures(typeMapping, query, httpReq, params.Context)
+		} else {
+			entity, resolveErr = er.resolveWithPrecompiled(typeMapping, query, httpReq, params.Context)
+		}
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 	}
 
 	// Merge representation fields into entity (for @requires directive support)
@@ -302,6 +314,121 @@ func (er *EntityResolver) resolveWithTypedQuery(typeMapping *EntityTypeMapping, 
 	normalizeObjectsToArrays(source, typeMapping.Mapping)
 
 	return source, nil
+}
+
+// resolveNestedEntity resolves an entity that lives inside an ES nested field.
+// NestedPath format: "<nested_field>.<sub_object>" (e.g. "carRelations.car").
+// It runs a nested query with inner_hits on the parent index and returns the
+// sub-object from the first matching inner hit.
+func (er *EntityResolver) resolveNestedEntity(typeMapping *EntityTypeMapping, fields map[string]any, ctx context.Context) (map[string]any, error) {
+	if er.esClient == nil {
+		return nil, fmt.Errorf("ES client not configured - nested entity resolution requires typed ES client")
+	}
+
+	// Split "carRelations.car" into nested ES path "carRelations" and sub-object "car"
+	dotIdx := strings.Index(typeMapping.NestedPath, ".")
+	if dotIdx < 0 {
+		return nil, fmt.Errorf("NestedPath %q must be in <nested_field>.<sub_object> format", typeMapping.NestedPath)
+	}
+	nestedField := typeMapping.NestedPath[:dotIdx]   // "carRelations"
+	subObject := typeMapping.NestedPath[dotIdx+1:]   // "car"
+
+	// Build the key filter using fully-qualified field paths (e.g. "carRelations.car.vin")
+	keyQuery, err := er.buildNestedEntityKeyQuery(typeMapping, fields, nestedField, subObject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build nested entity key query: %w", err)
+	}
+
+	// Wrap in a nested query with inner_hits so we get the matching nested doc back
+	innerHitsSize := 1
+	nestedQuery := &types.Query{
+		Nested: &types.NestedQuery{
+			Path:  nestedField,
+			Query: *keyQuery,
+			InnerHits: &types.InnerHits{
+				Size: &innerHitsSize,
+			},
+		},
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	resp, err := er.esClient.Search().
+		Index(typeMapping.Mapping.IndexName).
+		Request(&search.Request{
+			Size:  ptr(1),
+			Query: nestedQuery,
+		}).
+		Do(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ES nested entity query failed: %w", err)
+	}
+
+	if len(resp.Hits.Hits) == 0 {
+		return nil, nil
+	}
+
+	// Extract the first matching inner hit for our nested field
+	innerHitsResult, ok := resp.Hits.Hits[0].InnerHits[nestedField]
+	if !ok || len(innerHitsResult.Hits.Hits) == 0 {
+		return nil, nil
+	}
+
+	innerHit := innerHitsResult.Hits.Hits[0]
+	var nestedSource map[string]any
+	if innerHit.Source_ != nil {
+		if err := json.Unmarshal(innerHit.Source_, &nestedSource); err != nil {
+			return nil, fmt.Errorf("failed to parse inner hit source: %w", err)
+		}
+	}
+
+	// Navigate to the sub-object within the nested doc (e.g. source["car"])
+	subObj, ok := nestedSource[subObject]
+	if !ok {
+		return nil, nil
+	}
+	entity, ok := subObj.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("nested sub-object %q is not an object", subObject)
+	}
+
+	return entity, nil
+}
+
+// buildNestedEntityKeyQuery builds a term/bool query for nested entity key fields,
+// prefixing each key with the full nested path (e.g. "vin" → "carRelations.car.vin").
+func (er *EntityResolver) buildNestedEntityKeyQuery(typeMapping *EntityTypeMapping, fields map[string]any, nestedField, subObject string) (*types.Query, error) {
+	prefix := nestedField + "." + subObject // "carRelations.car"
+
+	buildTermQuery := func(key string) (*types.Query, error) {
+		value, ok := fields[key]
+		if !ok {
+			return nil, fmt.Errorf("missing key field: %s", key)
+		}
+		qualifiedKey := prefix + "." + key // "carRelations.car.vin"
+		if f := typeMapping.Mapping.GetField(qualifiedKey); f != nil && f.Type == FieldTypeKeyword {
+			qualifiedKey += ".keyword"
+		}
+		return &types.Query{
+			Term: map[string]types.TermQuery{qualifiedKey: {Value: value}},
+		}, nil
+	}
+
+	if len(typeMapping.EntityKeys) == 1 {
+		return buildTermQuery(typeMapping.EntityKeys[0])
+	}
+
+	var must []types.Query
+	for _, key := range typeMapping.EntityKeys {
+		q, err := buildTermQuery(key)
+		if err != nil {
+			return nil, err
+		}
+		must = append(must, *q)
+	}
+	return &types.Query{Bool: &types.BoolQuery{Must: must}}, nil
 }
 
 // ptr helper function to create pointer to value
