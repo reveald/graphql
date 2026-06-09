@@ -79,7 +79,11 @@ func (er *EntityResolver) ResolveEntities(params graphql.ResolveParams) (any, er
 			})
 			continue
 		}
-		if entity != nil {
+		// Always append — even when entity is not found — to preserve the 1-to-1
+		// positional mapping that Apollo Federation's DataLoader requires.
+		if entity == nil {
+			results = append(results, nil)
+		} else {
 			results = append(results, entity)
 		}
 	}
